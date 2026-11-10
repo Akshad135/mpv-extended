@@ -54,16 +54,17 @@ ApplicationWindow {
     }
 
     // Progress is written as playback goes, so a crash or a closed window
-    // loses seconds at most. A frame is kept for the library card.
-    function saveProgress(withFrame, wait) {
+    // loses seconds at most. A frame is kept for the library card; it is
+    // never waited for, since mpv may need the render thread to take it.
+    function saveProgress(withFrame) {
         if (!inPlayer || !mpv.path || mpv.duration <= 0) return
         library.update(mpv.path, mpv.title, mpv.position, mpv.duration)
         if (withFrame && hasPicture && mpv.position > 1)
-            mpv.screenshotTo(library.thumbnailFile(mpv.path), mpv.path, wait === true)
+            mpv.screenshotTo(library.thumbnailFile(mpv.path), mpv.path)
     }
 
     function goHome() {
-        saveProgress(true, true)
+        saveProgress(true)
         if (fullscreen) win.showNormal()
         overlay.closeMenus()
         mpv.stop()
@@ -71,14 +72,14 @@ ApplicationWindow {
 
     function playNext() {
         if (mpv.playlistPos < mpv.playlist.length - 1) {
-            saveProgress(true, true)
+            saveProgress(true)
             mpv.playIndex(mpv.playlistPos + 1)
         }
     }
     function playPrevious() {
         // Like a CD player: past the first few seconds, back goes to the start.
         if (mpv.position > 5 || mpv.playlistPos <= 0) { mpv.seek(0, true); return }
-        saveProgress(true, true)
+        saveProgress(true)
         mpv.playIndex(mpv.playlistPos - 1)
     }
 
@@ -92,11 +93,12 @@ ApplicationWindow {
     function captureFrame() {
         if (!hasPicture) return
         const file = library.frameCaptureFile(mpv.title, mpv.position)
-        mpv.screenshotTo(file, "", true, true)
-        toast("camera", qsTr("Frame saved to %1").arg(file.replace(/^.*\/(Pictures\/)/, "$1")))
+        mpv.screenshotTo(file, "capture:" + file, true)
     }
 
-    onClosing: saveProgress(true, true)
+    // Closing only records the position; the library card keeps the frame
+    // saved on the last pause or within the last 20 seconds.
+    onClosing: { saveProgress(false); library.save() }
 
     Component.onCompleted: {
         mpv.set("background-color", theme.deep)
@@ -114,9 +116,14 @@ ApplicationWindow {
             win.showError(qsTr("Can't play %1: %2").arg(name).arg(reason))
         }
         function onResumed(position) { win.toast("replay", qsTr("Resumed at %1").arg(library.formatTime(position))) }
-        function onScreenshotSaved(tag) { if (tag) library.thumbnailUpdated(tag) }
-        function onPausedChanged() { if (mpv.paused) win.saveProgress(true, false) }
-        function onEofChanged() { if (mpv.eof) win.saveProgress(false, false) }
+        function onScreenshotSaved(tag) {
+            if (tag.startsWith("capture:"))
+                win.toast("camera", qsTr("Frame saved to %1").arg(tag.slice(8).replace(/^.*\/(Pictures\/)/, "$1")))
+            else if (tag)
+                library.thumbnailUpdated(tag)
+        }
+        function onPausedChanged() { if (mpv.paused) win.saveProgress(true) }
+        function onEofChanged() { if (mpv.eof) win.saveProgress(false) }
         function onFileLoaded() { thumbnailer.prepare(mpv.path, mpv.duration) }
         function onDurationChanged() { if (mpv.duration > 0) thumbnailer.prepare(mpv.path, mpv.duration) }
     }
@@ -143,7 +150,7 @@ ApplicationWindow {
         interval: 20000
         repeat: true
         running: win.inPlayer && !mpv.paused
-        onTriggered: win.saveProgress(true, false)
+        onTriggered: win.saveProgress(true)
     }
 
     Binding { target: inhibitor; property: "active"; value: win.inPlayer && !mpv.paused && win.hasVideo }

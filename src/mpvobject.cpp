@@ -136,7 +136,6 @@ void MpvObject::setResumeLookup(std::function<double(const QString &)> lookup) {
 MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     // libmpv parses numbers with the C locale and refuses to start otherwise.
     std::setlocale(LC_NUMERIC, "C");
-    setMirrorVertically(true);
 
     m_mpv = mpv_create();
     if (!m_mpv)
@@ -353,13 +352,8 @@ void MpvObject::playIndex(int index) {
     mpv_set_property_string(m_mpv, "pause", "no");
 }
 
-void MpvObject::screenshotTo(const QString &file, const QString &tag, bool wait, bool withSubtitles) {
+void MpvObject::screenshotTo(const QString &file, const QString &tag, bool withSubtitles) {
     const QList<QByteArray> args{"screenshot-to-file", file.toUtf8(), withSubtitles ? "subtitles" : "video"};
-    if (wait) {
-        if (runCommand(m_mpv, args) >= 0 && !tag.isNull())
-            emit screenshotSaved(tag);
-        return;
-    }
     const quint64 reply = m_nextReply++;
     m_screenshots.insert(reply, tag.isNull() ? QString("") : tag);
     runCommand(m_mpv, args, reply);

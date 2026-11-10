@@ -73,9 +73,10 @@ public:
     Q_INVOKABLE void seekRelative(double seconds);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void playIndex(int index);
-    // Writes the current frame, without subtitles, to file. Asynchronous
-    // unless wait is set; screenshotSaved(tag) reports a finished write.
-    Q_INVOKABLE void screenshotTo(const QString &file, const QString &tag = {}, bool wait = false,
+    // Writes the current frame to file in the background; screenshotSaved(tag)
+    // reports a finished write. There is deliberately no waiting version:
+    // blocking the GUI thread on mpv can deadlock with Qt's render thread.
+    Q_INVOKABLE void screenshotTo(const QString &file, const QString &tag = {},
                                   bool withSubtitles = false);
 
 signals:
