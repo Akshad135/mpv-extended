@@ -1,0 +1,173 @@
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
+#include <QtTest>
+
+#include "library.h"
+#include "theme.h"
+#include "thumbnailer.h"
+#include "translator.h"
+
+class ReelTests : public QObject {
+    Q_OBJECT
+
+private slots:
+    void formatsTime()
+    {
+        QCOMPARE(Library::format(0), QString("0:00"));
+        QCOMPARE(Library::format(65.9), QString("1:05"));
+        QCOMPARE(Library::format(3600 + 2 * 60 + 3), QString("1:02:03"));
+        QCOMPARE(Library::format(-4), QString("0:00"));
+    }
+
+    void creditsCountAsFinished()
+    {
+        QVERIFY(!Library::isFinished(10, 0));
+        QVERIFY(!Library::isFinished(1200, 2400));
+        QVERIFY(Library::isFinished(2350, 2400)); // inside the last 5%
+        QVERIFY(!Library::isFinished(100, 120));
+        QVERIFY(Library::isFinished(112, 120)); // at least the last 10 s
+    }
+
+    void resumesOnlyWhatIsWorthResuming()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        library.update("/films/a.mkv", "A", 600, 2400);
+        library.update("/films/b.mkv", "B", 5, 2400);    // barely started
+        library.update("/films/c.mkv", "C", 2390, 2400); // finished
+        library.update("/films/d.mkv", "D", 40, 90);     // short clip
+        QCOMPARE(library.resumePosition("/films/a.mkv"), 600.0);
+        QCOMPARE(library.resumePosition("/films/b.mkv"), 0.0);
+        QCOMPARE(library.resumePosition("/films/c.mkv"), 0.0);
+        QCOMPARE(library.resumePosition("/films/d.mkv"), 0.0);
+        QCOMPARE(library.continueWatching().size(), 1);
+        QCOMPARE(library.recent().size(), 3);
+    }
+
+    void historySurvivesARestart()
+    {
+        QTemporaryDir data, cache;
+        {
+            Library library(data.path(), cache.path());
+            library.update("/films/a.mkv", "A", 600, 2400);
+        }
+        Library library(data.path(), cache.path());
+        QCOMPARE(library.resumePosition("/films/a.mkv"), 600.0);
+        library.forget("/films/a.mkv");
+        QCOMPARE(library.resumePosition("/films/a.mkv"), 0.0);
+    }
+
+    void singleFileQueuesItsSiblingsInNaturalOrder()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"Episode 10.mkv", "Episode 2.mkv", "Episode 1.mkv", "notes.txt", "song.mp3"})
+            touch(dir.filePath(name));
+        const QVariantMap result = Library().expand({dir.filePath("Episode 2.mkv")});
+        const QStringList files = result.value("files").toStringList();
+        QCOMPARE(files.size(), 3);
+        QVERIFY(files[0].endsWith("Episode 1.mkv"));
+        QVERIFY(files[1].endsWith("Episode 2.mkv"));
+        QVERIFY(files[2].endsWith("Episode 10.mkv"));
+        QCOMPARE(result.value("index").toInt(), 1);
+    }
+
+    void folderPlaysEverythingInIt()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Season 2");
+        touch(dir.filePath("Season 2/b.mkv"));
+        touch(dir.filePath("a.mp4"));
+        touch(dir.filePath("cover.jpg"));
+        const QStringList files = Library().expand({QUrl::fromLocalFile(dir.path()).toString()})
+                                      .value("files").toStringList();
+        QCOMPARE(files.size(), 2);
+    }
+
+    void linksPassThrough()
+    {
+        const QString link = "https://example.com/watch?v=abc";
+        QCOMPARE(Library().expand({link}).value("files").toStringList(), QStringList{link});
+    }
+
+    void framesComeCoarseToFine()
+    {
+        const QList<int> order = Thumbnailer::order(8);
+        QCOMPARE(order.size(), 8);
+        QCOMPARE(order.first(), 4);
+        QCOMPARE(QSet<int>(order.begin(), order.end()).size(), 8);
+        QCOMPARE(Thumbnailer::frameCount(0), 0);
+        QCOMPARE(Thumbnailer::frameCount(20), 10);
+        QCOMPARE(Thumbnailer::frameCount(7200), 120);
+        QCOMPARE(Thumbnailer::nearest({2, 9}, 7, 10), 9);
+        QCOMPARE(Thumbnailer::nearest({}, 7, 10), -1);
+    }
+
+    void themeFallsBack()
+    {
+        QTemporaryDir dir;
+        Theme theme(dir.path());
+        QCOMPARE(theme.accent(), QColor("#FFD60A"));
+        QCOMPARE(theme.accentText(), QColor(Qt::black));
+        QVERIFY(theme.surface().isValid());
+        QVERIFY(!theme.isLight());
+    }
+
+    void themeReadsThePalette()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        touch(dir.path() + "/theme/colors.toml",
+              "mode = \"light\"\naccent = \"#112233\"\nbackground = \"#fafafa\"\nforeground = \"#202020\"\n"
+              "lighter_background = \"#ffffff\"\n");
+        Theme theme(dir.path());
+        QCOMPARE(theme.accent(), QColor("#112233"));
+        QCOMPARE(theme.accentText(), QColor(Qt::white));
+        QCOMPARE(theme.surface(), QColor("#ffffff"));
+        QVERIFY(theme.isLight());
+        QVERIFY(theme.deep().isValid()); // derived, since the file leaves it out
+    }
+
+    void themeFollowsHyprlandRounding()
+    {
+        QTemporaryDir dir;
+        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        touch(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        touch(response, "{\"int\":0}");
+
+        Theme theme(dir.path(), nullptr, command);
+        QCOMPARE(theme.radius(), 0);
+        touch(response, "{\"int\":6}");
+        QTRY_COMPARE(theme.radius(), 6);
+    }
+
+    void translatorFallsBackToEnglish()
+    {
+        QTemporaryDir dir;
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(translator.language(), QString("en"));
+        QVERIFY(translator.translate("Main", "Open").isNull());
+    }
+
+    void translatorPicksPluralForms()
+    {
+        QTemporaryDir dir;
+        touch(dir.path() + "/language", "ru\n");
+        touch(dir.path() + "/ru.json", R"({"%n items": {"one": "%n элемент", "few": "%n элемента", "many": "%n элементов", "other": "%n элемента"}})");
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(translator.translate("Main", "%n items", nullptr, 21), QString("%n элемент"));
+        QCOMPARE(translator.translate("Main", "%n items", nullptr, 25), QString("%n элементов"));
+    }
+
+private:
+    static void touch(const QString &path, const QByteArray &contents = "x")
+    {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(contents);
+    }
+};
+
+QTEST_MAIN(ReelTests)
+#include "reel_tests.moc"

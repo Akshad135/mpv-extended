@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Main.qml">qml/Main.qml</file>
+        <file alias="Glyph.qml">qml/Glyph.qml</file>
+        <file alias="IconButton.qml">qml/IconButton.qml</file>
+        <file alias="Sheet.qml">qml/Sheet.qml</file>
+        <file alias="MenuRow.qml">qml/MenuRow.qml</file>
+        <file alias="Timeline.qml">qml/Timeline.qml</file>
+        <file alias="PlayerOverlay.qml">qml/PlayerOverlay.qml</file>
+        <file alias="PlaylistPanel.qml">qml/PlaylistPanel.qml</file>
+        <file alias="HomeView.qml">qml/HomeView.qml</file>
+        <file alias="MediaCard.qml">qml/MediaCard.qml</file>
+        <file alias="RecentRow.qml">qml/RecentRow.qml</file>
+        <file alias="HelpOverlay.qml">qml/HelpOverlay.qml</file>
+        <file alias="Toast.qml">qml/Toast.qml</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
+    </qresource>
+</RCC>
