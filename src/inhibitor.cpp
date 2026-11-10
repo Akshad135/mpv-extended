@@ -30,17 +30,25 @@ void Inhibitor::setActive(bool active) {
             qWarning("reel: can't keep the screen awake: %s", qPrintable(reply.error().message()));
             return;
         }
-        m_handle = reply.value().path();
-        // Playback may have paused while the portal was answering.
-        if (!m_active)
-            release();
+        const QString handle = reply.value().path();
+        // Playback may have paused while the portal was answering, or an
+        // earlier request may already hold the inhibition; either way this
+        // one is let go at once so none is ever leaked.
+        if (!m_active || !m_handle.isEmpty())
+            close(handle);
+        else
+            m_handle = handle;
     });
 }
 
 void Inhibitor::release() {
     if (m_handle.isEmpty())
         return;
-    QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
-        "org.freedesktop.portal.Desktop", m_handle, "org.freedesktop.portal.Request", "Close"));
+    close(m_handle);
     m_handle.clear();
+}
+
+void Inhibitor::close(const QString &handle) {
+    QDBusConnection::sessionBus().asyncCall(QDBusMessage::createMethodCall(
+        "org.freedesktop.portal.Desktop", handle, "org.freedesktop.portal.Request", "Close"));
 }

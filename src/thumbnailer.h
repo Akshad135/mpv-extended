@@ -31,6 +31,7 @@ signals:
 private:
     void pump();
     void reset();
+    void prune();
 
     QString m_cacheDirectory;
     QString m_ffmpeg;

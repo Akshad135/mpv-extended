@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QSet>
 #include <QObject>
 #include <QTimer>
 #include <QVariant>
@@ -36,6 +37,8 @@ public:
     Q_INVOKABLE QString thumbnailFile(const QString &path) const;
     Q_INVOKABLE void thumbnailUpdated(const QString &path);
     Q_INVOKABLE void save();
+    // Rebuilds the library lists; called when the library comes back on screen.
+    Q_INVOKABLE void refresh();
 
     // The playlist an open request becomes: a folder plays everything in it,
     // and a single file plays with its siblings of the same kind so the next
@@ -58,12 +61,15 @@ signals:
 
 private:
     QVariantMap toVariant(const Entry &entry) const;
+    static QHash<QString, Entry> readEntries(const QString &path, bool *ok);
     void load();
     void touch();
+    void trim();
 
     QString m_dataFile;
     QString m_cacheDirectory;
     QHash<QString, Entry> m_entries;
+    QSet<QString> m_forgotten;
     QTimer m_saveTimer;
     bool m_dirty = false;
 };

@@ -20,6 +20,7 @@ signals:
 
 private:
     void release();
+    static void close(const QString &handle);
 
     bool m_active = false;
     QString m_handle;

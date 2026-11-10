@@ -10,6 +10,22 @@ Item {
     required property var app
 
     property bool playlistOpen: false
+    // A stream with no known length (live TV, radio) can't be seeked by
+    // fraction; its controls say LIVE instead.
+    readonly property bool seekable: player.duration > 0
+    property bool loaded: false
+    property real menuClosedAt: 0
+    property real wheelRemainder: 0
+    // A press outside a sheet closes it before the click lands, so a click
+    // right after must not reopen it or count as a click on the picture.
+    function justClosedMenu() { return Date.now() - menuClosedAt < 400 }
+    readonly property var currentChapter: player.chapter >= 0 && player.chapter < player.chapters.length
+                                          ? player.chapters[player.chapter] : null
+    readonly property string chapterName: currentChapter
+                                          ? (currentChapter.title || qsTr("Chapter %1").arg(player.chapter + 1)) : ""
+    function speedText(s) {
+        return Number(s).toLocaleString(Qt.locale(), 'f', 2).replace(/[.,]?0+$/, "") + "×"
+    }
     property bool upNextCancelled: false
     property bool showRemaining: false
     readonly property bool menusOpen: tracksSheet.opened || speedSheet.opened || playlistOpen
@@ -43,7 +59,7 @@ Item {
     }
     function setSpeed(s) {
         player.set("speed", Math.max(0.25, Math.min(4, s)))
-        app.toast("speed", qsTr("Speed %1×").arg(Number(Math.max(0.25, Math.min(4, s))).toLocaleString(Qt.locale(), 'f', 2).replace(/\.?0+$/, "")))
+        app.toast("speed", qsTr("Speed %1").arg(speedText(Math.max(0.25, Math.min(4, s)))))
     }
     function trackLabel(t) {
         const parts = []
@@ -68,8 +84,20 @@ Item {
         else
             app.toast("subtitles", current ? qsTr("Subtitles: %1").arg(trackLabel(current)) : qsTr("Subtitles off"))
     }
-    function openTracks() { speedSheet.close(); tracksSheet.opened ? tracksSheet.close() : tracksSheet.open() }
-    function togglePlaylist() { tracksSheet.close(); speedSheet.close(); playlistOpen = !playlistOpen }
+    function openTracks() {
+        if (justClosedMenu()) return
+        speedSheet.close()
+        tracksSheet.opened ? tracksSheet.close() : tracksSheet.open()
+    }
+    function openSpeed() {
+        if (justClosedMenu()) return
+        tracksSheet.close()
+        speedSheet.opened ? speedSheet.close() : speedSheet.open()
+    }
+    function togglePlaylist() {
+        if (!hasPlaylist) { playlistOpen = false; return }
+        tracksSheet.close(); speedSheet.close(); playlistOpen = !playlistOpen
+    }
     function nameOf(entry) {
         if (!entry) return ""
         if (entry.title) return entry.title
@@ -80,7 +108,9 @@ Item {
 
     Connections {
         target: overlay.player
-        function onFileLoaded() { overlay.upNextCancelled = false; overlay.wake() }
+        function onFileLoaded() { overlay.loaded = true; overlay.upNextCancelled = false; overlay.wake() }
+        function onPathChanged() { overlay.loaded = false }
+        function onEofChanged() { if (!overlay.player.eof) overlay.upNextCancelled = false }
     }
 
     Timer { id: idleTimer; interval: 2600 }
@@ -93,7 +123,7 @@ Item {
         cursorShape: overlay.controlsShown ? Qt.ArrowCursor : Qt.BlankCursor
         onPositionChanged: overlay.wake()
         onClicked: {
-            if (overlay.closeMenus()) return
+            if (overlay.justClosedMenu() || overlay.closeMenus()) return
             overlay.togglePause()
         }
         onDoubleClicked: {
@@ -101,14 +131,22 @@ Item {
             overlay.app.toggleFullscreen()
         }
         onWheel: (wheel) => {
-            overlay.setVolume(overlay.player.volume + (wheel.angleDelta.y > 0 ? 5 : -5))
+            // One notch (120) is 5%; touchpads send many small deltas that
+            // add up the same way, and sideways swipes change nothing.
+            if (wheel.angleDelta.y === 0) return
+            overlay.wheelRemainder += wheel.angleDelta.y
+            const steps = Math.trunc(overlay.wheelRemainder / 120)
+            if (steps !== 0) {
+                overlay.wheelRemainder -= steps * 120
+                overlay.setVolume(overlay.player.volume + steps * 5)
+            }
             overlay.wake()
         }
     }
 
     // Audio without artwork gets a calm card instead of a black window.
     Column {
-        visible: !overlay.app.hasVideo && !overlay.player.idle && overlay.player.duration > 0
+        visible: !overlay.app.hasPicture && !overlay.player.idle && overlay.loaded
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -40
         spacing: 18
@@ -189,11 +227,8 @@ Item {
             Text {
                 width: parent.width
                 visible: text.length > 0
-                text: overlay.hasPlaylist ? qsTr("%1 of %2").arg(overlay.player.playlistPos + 1).arg(overlay.player.playlist.length)
-                                           + (overlay.player.chapter >= 0 && overlay.player.chapters.length > 0
-                                              ? "  ·  " + (overlay.player.chapters[overlay.player.chapter].title || qsTr("Chapter %1").arg(overlay.player.chapter + 1)) : "")
-                                          : (overlay.player.chapter >= 0 && overlay.player.chapters.length > 0
-                                             ? (overlay.player.chapters[overlay.player.chapter].title || qsTr("Chapter %1").arg(overlay.player.chapter + 1)) : "")
+                text: [overlay.hasPlaylist ? qsTr("%1 of %2").arg(overlay.player.playlistPos + 1).arg(overlay.player.playlist.length) : "",
+                       overlay.chapterName].filter(s => s).join("  ·  ")
                 color: theme.dim
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -267,7 +302,7 @@ Item {
 
     BusyIndicator {
         anchors.centerIn: parent
-        running: overlay.player.buffering || (!overlay.player.idle && overlay.player.duration <= 0 && overlay.player.path.length > 0)
+        running: overlay.player.buffering || (!overlay.player.idle && !overlay.loaded)
         visible: running
     }
 
@@ -352,6 +387,7 @@ Item {
 
         Timeline {
             id: timeline
+            visible: overlay.seekable
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
@@ -394,7 +430,17 @@ Item {
                 onClicked: overlay.app.playNext()
             }
             Item { width: 10; height: 1 }
+            Rectangle {
+                visible: !overlay.seekable && overlay.loaded
+                anchors.verticalCenter: parent.verticalCenter
+                width: liveText.implicitWidth + 14
+                height: 20
+                radius: Math.min(4, theme.radius)
+                color: theme.red
+                Text { id: liveText; anchors.centerIn: parent; text: qsTr("LIVE"); color: theme.background; font.pixelSize: 11; font.weight: Font.Bold }
+            }
             Text {
+                visible: overlay.seekable
                 anchors.verticalCenter: parent.verticalCenter
                 text: (overlay.showRemaining ? "−" + library.formatTime(overlay.player.duration - timeline.shown)
                                              : library.formatTime(timeline.shown))
@@ -425,8 +471,10 @@ Item {
                 tip: qsTr("Mute (M)")
                 onClicked: overlay.player.set("mute", !overlay.player.muted)
             }
-            // Volume: drag or click anywhere on the bar.
+            // Volume: drag or click anywhere on the bar. Narrow windows keep
+            // only the mute button.
             Item {
+                visible: dock.width >= 700
                 width: 86
                 height: 40
                 anchors.verticalCenter: parent.verticalCenter
@@ -471,6 +519,7 @@ Item {
 
             // Speed reads as text so a non-default rate is visible at a glance.
             Rectangle {
+                visible: dock.width >= 560 || overlay.player.speed !== 1
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(40, speedLabel.implicitWidth + 16)
                 height: 30
@@ -480,7 +529,7 @@ Item {
                 Text {
                     id: speedLabel
                     anchors.centerIn: parent
-                    text: Number(overlay.player.speed).toLocaleString(Qt.locale(), 'f', 2).replace(/[.,]?0+$/, "") + "×"
+                    text: overlay.speedText(overlay.player.speed)
                     color: overlay.player.speed !== 1 ? theme.accent : theme.strong
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
@@ -491,7 +540,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { tracksSheet.close(); speedSheet.opened ? speedSheet.close() : speedSheet.open() }
+                    onClicked: overlay.openSpeed()
                 }
                 ToolTip.visible: speedArea.containsMouse
                 ToolTip.text: qsTr("Speed ([ and ])")
@@ -596,7 +645,7 @@ Item {
         width: Math.min(360, parent.width - 32)
         x: open ? parent.width - width - 16 : parent.width + 8
         Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-        onPicked: (index) => overlay.player.playIndex(index)
+        onPicked: (index) => overlay.app.playAt(index)
         onCloseRequested: overlay.playlistOpen = false
     }
 
@@ -604,15 +653,16 @@ Item {
         id: speedSheet
         parent: overlay
         width: 168
-        x: dock.x + dock.width - width - 150
-        y: dock.y - height - 10
+        x: Math.max(16, dock.x + dock.width - width - 150)
+        y: Math.max(8, dock.y - height - 10)
+        onAboutToHide: overlay.menuClosedAt = Date.now()
         contentItem: Column {
             spacing: 0
             Repeater {
                 model: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3]
                 MenuRow {
                     required property var modelData
-                    text: Number(modelData).toLocaleString(Qt.locale(), 'f', 2).replace(/[.,]?0+$/, "") + "×"
+                    text: overlay.speedText(modelData)
                     detail: modelData === 1 ? qsTr("Normal") : ""
                     checked: Math.abs(overlay.player.speed - modelData) < 0.001
                     onClicked: { overlay.player.set("speed", modelData); speedSheet.close() }
@@ -626,7 +676,8 @@ Item {
         parent: overlay
         width: Math.min(600, overlay.width - 32)
         x: Math.max(16, dock.x + dock.width - width - 8)
-        y: dock.y - height - 10
+        y: Math.max(8, dock.y - height - 10)
+        onAboutToHide: overlay.menuClosedAt = Date.now()
         contentItem: Flickable {
             implicitHeight: Math.min(columns.implicitHeight, overlay.height * 0.55)
             contentHeight: columns.implicitHeight

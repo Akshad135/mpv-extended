@@ -58,6 +58,64 @@ private slots:
         QCOMPARE(library.resumePosition("/films/a.mkv"), 0.0);
     }
 
+    void twoWindowsKeepEachOthersProgress()
+    {
+        QTemporaryDir data, cache;
+        Library first(data.path(), cache.path());
+        Library second(data.path(), cache.path());
+        first.update("/films/a.mkv", "A", 600, 2400);
+        second.update("/films/b.mkv", "B", 700, 2400);
+        first.save();
+        second.save();
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/a.mkv"), 600.0);
+        QCOMPARE(fresh.resumePosition("/films/b.mkv"), 700.0);
+    }
+
+    void forgettingSticksAcrossWindows()
+    {
+        QTemporaryDir data, cache;
+        {
+            Library seed(data.path(), cache.path());
+            seed.update("/films/x.mkv", "X", 600, 2400);
+        }
+        Library first(data.path(), cache.path());
+        Library second(data.path(), cache.path());
+        second.forget("/films/x.mkv");
+        first.update("/films/y.mkv", "Y", 300, 2400);
+        first.save();
+        second.save();
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/x.mkv"), 0.0);
+        QCOMPARE(fresh.resumePosition("/films/y.mkv"), 300.0);
+    }
+
+    void unreadableHistoryIsKeptAside()
+    {
+        QTemporaryDir data, cache;
+        touch(data.filePath("history.json"), "{ this is not json");
+        Library library(data.path(), cache.path());
+        library.update("/films/a.mkv", "A", 600, 2400);
+        library.save();
+        const QStringList aside = QDir(data.path()).entryList({"history.json.bad-*"});
+        QCOMPARE(aside.size(), 1);
+        QFile kept(data.filePath(aside.first()));
+        QVERIFY(kept.open(QIODevice::ReadOnly));
+        QCOMPARE(kept.readAll(), QByteArray("{ this is not json"));
+    }
+
+    void namesTrackLanguages()
+    {
+        Library library;
+        QCOMPARE(library.languageName("und"), QString());
+        QCOMPARE(library.languageName(""), QString());
+        QCOMPARE(library.languageName("eng"), QString("English"));
+        QCOMPARE(library.languageName("en-US"), QString("English"));
+        QCOMPARE(library.languageName("ger"), QString("German"));
+        QCOMPARE(library.languageName("pt-BR"), QString("Portuguese"));
+        QCOMPARE(library.languageName("qqq"), QString("qqq"));
+    }
+
     void singleFileQueuesItsSiblingsInNaturalOrder()
     {
         QTemporaryDir dir;

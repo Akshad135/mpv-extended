@@ -76,9 +76,15 @@ void FilePicker::openSubtitle() {
 }
 
 void FilePicker::request(const QString &title, const QString &purpose, bool directory, bool multiple, int filters) {
-    if (busy())
-        return;
     QDBusConnection bus = QDBusConnection::sessionBus();
+    // A request the portal never answered must not block every later one:
+    // close it and start fresh.
+    if (busy()) {
+        unsubscribe();
+        bus.asyncCall(QDBusMessage::createMethodCall("org.freedesktop.portal.Desktop", m_requestPath,
+                                                     "org.freedesktop.portal.Request", "Close"));
+        m_requestPath.clear();
+    }
     if (!bus.isConnected()) {
         emit failed(tr("No session bus, so the file picker can't open."));
         return;
@@ -115,24 +121,39 @@ void FilePicker::request(const QString &title, const QString &purpose, bool dire
                                                           "org.freedesktop.portal.FileChooser", "OpenFile");
     message << QString() << title << options;
     auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(message), this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *call) {
+    const QString expected = m_requestPath;
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, expected](QDBusPendingCallWatcher *call) {
         call->deleteLater();
+        if (m_requestPath != expected)
+            return; // superseded by a newer request
         QDBusPendingReply<QDBusObjectPath> reply = *call;
         if (reply.isError()) {
-            QDBusConnection::sessionBus().disconnect("org.freedesktop.portal.Desktop", m_requestPath,
-                                                     "org.freedesktop.portal.Request", "Response", this,
-                                                     SLOT(onResponse(uint, QVariantMap)));
+            unsubscribe();
             m_requestPath.clear();
             emit busyChanged();
             emit failed(tr("The file picker didn't open: %1").arg(reply.error().message()));
+            return;
+        }
+        // Older portals pick their own handle; follow it if it differs.
+        const QString actual = reply.value().path();
+        if (!actual.isEmpty() && actual != m_requestPath) {
+            unsubscribe();
+            m_requestPath = actual;
+            QDBusConnection::sessionBus().connect("org.freedesktop.portal.Desktop", m_requestPath,
+                                                  "org.freedesktop.portal.Request", "Response", this,
+                                                  SLOT(onResponse(uint, QVariantMap)));
         }
     });
 }
 
-void FilePicker::onResponse(uint response, const QVariantMap &results) {
+void FilePicker::unsubscribe() {
     QDBusConnection::sessionBus().disconnect("org.freedesktop.portal.Desktop", m_requestPath,
                                              "org.freedesktop.portal.Request", "Response", this,
                                              SLOT(onResponse(uint, QVariantMap)));
+}
+
+void FilePicker::onResponse(uint response, const QVariantMap &results) {
+    unsubscribe();
     m_requestPath.clear();
     emit busyChanged();
     // 1 is a cancel, which needs no message.

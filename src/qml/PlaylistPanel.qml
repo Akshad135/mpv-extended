@@ -56,9 +56,17 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
         onCountChanged: positionViewAtIndex(Math.max(0, currentIndex), ListView.Center)
+        // mpv resends the whole playlist on every file change, which resets
+        // the view; bring the current file back into sight each time.
+        function follow() { Qt.callLater(() => list.positionViewAtIndex(Math.max(0, panel.player.playlistPos), ListView.Contain)) }
         Connections {
             target: panel
-            function onOpenChanged() { if (panel.open) list.positionViewAtIndex(Math.max(0, list.currentIndex), ListView.Center) }
+            function onOpenChanged() { if (panel.open) list.follow() }
+        }
+        Connections {
+            target: panel.player
+            function onPlaylistChanged() { list.follow() }
+            function onPlaylistPosChanged() { list.follow() }
         }
 
         delegate: Item {

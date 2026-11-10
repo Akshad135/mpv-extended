@@ -58,11 +58,25 @@ Library::~Library() {
     save();
 }
 
-void Library::load() {
-    QFile file(m_dataFile);
-    if (!file.open(QIODevice::ReadOnly))
-        return;
-    const QJsonArray items = QJsonDocument::fromJson(file.readAll()).object().value("items").toArray();
+// Reads a history file. *ok is false only when a file exists but can't be
+// read or parsed; a missing file is simply an empty history.
+QHash<QString, Library::Entry> Library::readEntries(const QString &path, bool *ok) {
+    QHash<QString, Entry> entries;
+    *ok = true;
+    QFile file(path);
+    if (!file.exists())
+        return entries;
+    if (!file.open(QIODevice::ReadOnly)) {
+        *ok = false;
+        return entries;
+    }
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        *ok = false;
+        return entries;
+    }
+    const QJsonArray items = document.object().value("items").toArray();
     for (const auto &value : items) {
         const QJsonObject o = value.toObject();
         Entry e;
@@ -75,7 +89,22 @@ void Library::load() {
         e.lastPlayed = qint64(o.value("lastPlayed").toDouble());
         e.thumbnailStamp = qint64(o.value("thumbnailStamp").toDouble());
         e.finished = o.value("finished").toBool();
-        m_entries.insert(e.path, e);
+        entries.insert(e.path, e);
+    }
+    return entries;
+}
+
+void Library::load() {
+    bool ok = true;
+    m_entries = readEntries(m_dataFile, &ok);
+    if (!ok) {
+        // Kept aside rather than overwritten by the next save, so a damaged
+        // history can still be recovered by hand.
+        const QString aside = m_dataFile + ".bad-" + QString::number(QDateTime::currentMSecsSinceEpoch());
+        if (QFile::rename(m_dataFile, aside))
+            qWarning("reel: history was unreadable; moved it to %s", qPrintable(aside));
+        else
+            qWarning("reel: history is unreadable and couldn't be moved aside: %s", qPrintable(m_dataFile));
     }
 }
 
@@ -83,6 +112,22 @@ void Library::save() {
     m_saveTimer.stop();
     if (!m_dirty)
         return;
+
+    // Another Reel window may have saved since this one loaded. Merge per
+    // file, newest play wins, so neither window erases the other's progress.
+    bool ok = true;
+    const auto onDisk = readEntries(m_dataFile, &ok);
+    if (ok) {
+        for (auto it = onDisk.begin(); it != onDisk.end(); ++it) {
+            if (m_forgotten.contains(it.key()))
+                continue;
+            const auto mine = m_entries.constFind(it.key());
+            if (mine == m_entries.constEnd() || mine->lastPlayed < it->lastPlayed)
+                m_entries.insert(it.key(), it.value());
+        }
+        trim();
+    }
+
     QJsonArray items;
     for (const auto &e : std::as_const(m_entries))
         items.append(QJsonObject{{"path", e.path}, {"title", e.title}, {"position", e.position},
@@ -107,7 +152,19 @@ void Library::touch() {
     m_dirty = true;
     if (!m_saveTimer.isActive())
         m_saveTimer.start();
+}
+
+void Library::refresh() {
     emit changed();
+}
+
+void Library::trim() {
+    while (m_entries.size() > historyLimit) {
+        auto oldest = std::min_element(m_entries.begin(), m_entries.end(),
+                                       [](const Entry &a, const Entry &b) { return a.lastPlayed < b.lastPlayed; });
+        QFile::remove(thumbnailFile(oldest->path));
+        m_entries.erase(oldest);
+    }
 }
 
 bool Library::isFinished(double position, double duration) {
@@ -130,20 +187,19 @@ void Library::update(const QString &path, const QString &title, double position,
     e.position = std::max(0.0, position);
     e.finished = isFinished(e.position, e.duration);
     e.lastPlayed = QDateTime::currentMSecsSinceEpoch();
-
-    if (m_entries.size() > historyLimit) {
-        auto oldest = std::min_element(m_entries.begin(), m_entries.end(),
-                                       [](const Entry &a, const Entry &b) { return a.lastPlayed < b.lastPlayed; });
-        QFile::remove(thumbnailFile(oldest->path));
-        m_entries.erase(oldest);
-    }
+    m_forgotten.remove(path);
+    trim();
+    // Saved, but the lists aren't rebuilt: the library isn't on screen while
+    // something plays, and refresh() updates it on the way back.
     touch();
 }
 
 void Library::forget(const QString &path) {
+    m_forgotten.insert(path);
     if (m_entries.remove(path)) {
         QFile::remove(thumbnailFile(path));
         touch();
+        emit changed();
     }
 }
 
@@ -240,11 +296,16 @@ void Library::naturalSort(QStringList &paths) {
 QStringList Library::mediaIn(const QString &directory) {
     QStringList files;
     QDirIterator it(directory, QDir::Files | QDir::Readable, QDirIterator::Subdirectories);
-    while (it.hasNext() && files.size() < 5000) {
+    // Bounded by everything visited, not just media found, so opening a huge
+    // tree (a home folder, a source checkout) can't stall the window for long.
+    int visited = 0;
+    while (it.hasNext() && files.size() < 5000 && ++visited <= 50000) {
         const QString file = it.next();
         if (!kindOf(file).isEmpty())
             files.append(file);
     }
+    if (visited > 50000)
+        qWarning("reel: stopped scanning %s after 50000 files", qPrintable(directory));
     naturalSort(files);
     return files;
 }
@@ -260,7 +321,10 @@ QVariantMap Library::expand(const QStringList &inputs) const {
         } else if (info.isFile()) {
             const QString kind = kindOf(path);
             if (!kind.isEmpty()) {
-                for (const auto &sibling : info.dir().entryInfoList(QDir::Files | QDir::Readable))
+                // A hidden file brings its hidden siblings; a normal one doesn't.
+                const QDir::Filters filter = QDir::Files | QDir::Readable
+                                             | (info.fileName().startsWith('.') ? QDir::Hidden : QDir::Filters());
+                for (const auto &sibling : info.dir().entryInfoList(filter))
                     if (kindOf(sibling.fileName()) == kind)
                         files.append(sibling.absoluteFilePath());
                 naturalSort(files);
@@ -303,7 +367,7 @@ QString Library::frameCaptureFile(const QString &title, double position) const {
     const QString stamp = format(position).replace(':', '.');
     QString file = QString("%1/%2 %3.jpg").arg(directory, name, stamp);
     for (int n = 2; QFileInfo::exists(file); ++n)
-        file = QString("%1/%2 %3 (%4).jpg").arg(directory, name, stamp).arg(n);
+        file = QString("%1/%2 %3 (%4).jpg").arg(directory, name, stamp, QString::number(n));
     return file;
 }
 
@@ -331,10 +395,16 @@ QString Library::relativeTime(qint64 msecsSinceEpoch) const {
 }
 
 QString Library::languageName(const QString &code) const {
-    if (code.isEmpty())
+    // Undetermined, no language, and miscellaneous say nothing useful.
+    static const QStringList unknown{"und", "zxx", "mis", "mul", "unk", "none"};
+    if (code.isEmpty() || unknown.contains(code.toLower()))
         return {};
-    const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::AnyLanguageCode);
+    // Region tags (pt-BR, en_US) name the language they start with.
+    const QString base = code.section(QRegularExpression("[-_]"), 0, 0);
+    const QLocale::Language language = QLocale::codeToLanguage(base, QLocale::AnyLanguageCode);
     if (language == QLocale::AnyLanguage || language == QLocale::C)
         return code;
+    // Qt's plain name ("German"). Native names were tried, but Qt picks a
+    // likely region for them ("American English"), which reads wrong here.
     return QLocale::languageToString(language);
 }

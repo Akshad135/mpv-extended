@@ -4,6 +4,7 @@
 #include <QQuickFramebufferObject>
 #include <QVariant>
 #include <functional>
+#include <memory>
 
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
@@ -11,6 +12,8 @@
 // libmpv drawn into a Qt Quick item through mpv's OpenGL render API. mpv does
 // the decoding, subtitles, and audio; this class turns its observed properties
 // into Qt properties and its commands into invokable methods for the QML.
+struct MpvCore;
+
 class MpvObject : public QQuickFramebufferObject {
     Q_OBJECT
     Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
@@ -34,6 +37,7 @@ class MpvObject : public QQuickFramebufferObject {
     Q_PROPERTY(QVariantMap metadata READ metadata NOTIFY metadataChanged)
 
     friend class MpvRenderer;
+    friend struct MpvCore;
 
 public:
     explicit MpvObject(QQuickItem *parent = nullptr);
@@ -65,16 +69,16 @@ public:
     QVariantMap metadata() const { return value("metadata").toMap(); }
 
     Q_INVOKABLE void loadFiles(const QStringList &files, int index = 0);
-    Q_INVOKABLE void command(const QVariantList &args);
-    Q_INVOKABLE void set(const QString &name, const QVariant &value);
+    Q_INVOKABLE bool command(const QVariantList &args);
+    Q_INVOKABLE bool set(const QString &name, const QVariant &value);
     Q_INVOKABLE QVariant get(const QString &name) const;
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void seek(double seconds, bool exact = true);
     Q_INVOKABLE void seekRelative(double seconds);
     Q_INVOKABLE void stop();
     Q_INVOKABLE void playIndex(int index);
-    // Writes the current frame to file in the background; screenshotSaved(tag)
-    // reports a finished write. There is deliberately no waiting version:
+    // Writes the current frame to file in the background; screenshotFinished(tag, ok)
+    // reports the result. There is deliberately no waiting version:
     // blocking the GUI thread on mpv can deadlock with Qt's render thread.
     Q_INVOKABLE void screenshotTo(const QString &file, const QString &tag = {},
                                   bool withSubtitles = false);
@@ -102,21 +106,25 @@ signals:
     void fileLoaded();
     void resumed(double position);
     void failed(const QString &path, const QString &reason);
-    void screenshotSaved(const QString &tag);
+    void screenshotFinished(const QString &tag, bool ok);
+    void videoOutputFailed();
 
 private:
     QVariant value(const char *name) const { return m_values.value(QString::fromLatin1(name)); }
     void processEvents();
     void renderReady();
+    void renderFailed();
+    void requestFrame();
     void handleEvent(mpv_event *event);
 
     mpv_handle *m_mpv = nullptr;
-    mpv_render_context *m_render = nullptr;
+    std::shared_ptr<MpvCore> m_core;
     QHash<QString, QVariant> m_values;
     QHash<quint64, QString> m_screenshots;
     quint64 m_nextReply = 1;
     QString m_loadingPath;
     bool m_ready = false;
+    bool m_renderFailed = false;
     QStringList m_pendingFiles;
     int m_pendingIndex = 0;
 };

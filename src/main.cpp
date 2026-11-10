@@ -91,6 +91,10 @@ int main(int argc, char *argv[]) {
     // without anyone watching the screen.
     if (const QString grab = qEnvironmentVariable("REEL_GRAB"); !grab.isEmpty()) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        if (!window) {
+            qWarning("REEL_GRAB: the root object isn't a window");
+            return 1;
+        }
         const int after = qEnvironmentVariableIntValue("REEL_GRAB_AFTER") ?: 2500;
         const QString script = qEnvironmentVariable("REEL_GRAB_EVAL");
         QTimer::singleShot(std::max(0, after - 700), window, [window, script] {
@@ -102,7 +106,8 @@ int main(int argc, char *argv[]) {
             }
         });
         QTimer::singleShot(after, window, [window, grab] {
-            window->grabWindow().save(grab);
+            if (!window->grabWindow().save(grab))
+                qWarning("REEL_GRAB: couldn't save %s", qPrintable(grab));
             QGuiApplication::quit();
         });
     }

@@ -5,7 +5,10 @@
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
 #include <QQuickWindow>
+#include <QOpenGLFunctions>
 #include <clocale>
+#include <cmath>
+#include <mutex>
 #include <utility>
 
 namespace {
@@ -46,8 +49,14 @@ QVariant fromNode(const mpv_node *node) {
 QByteArray toArgument(const QVariant &value) {
     if (value.typeId() == QMetaType::Bool)
         return value.toBool() ? "yes" : "no";
-    if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Float)
-        return QByteArray::number(value.toDouble(), 'f', 6);
+    if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Float) {
+        // QML hands every number over as a double, and mpv rejects "2.000000"
+        // for integer properties such as aid, sid, and playlist-pos.
+        const double d = value.toDouble();
+        if (std::isfinite(d) && std::floor(d) == d && std::abs(d) < 1e15)
+            return QByteArray::number(qint64(d));
+        return QByteArray::number(d, 'f', 6);
+    }
     return value.toString().toUtf8();
 }
 
@@ -75,46 +84,79 @@ const char *const observed[] = {
 
 } // namespace
 
+// Shared by the item (GUI thread) and its renderer (render thread). The mpv
+// core lives until both are gone, so the render context can always be freed
+// first, on the render thread, while its GL context is current, as render.h
+// requires. The item pointer is cleared when the item dies, so mpv's update
+// callback never reaches a deleted object.
+struct MpvCore {
+    mpv_handle *handle = nullptr;
+    std::mutex mutex;
+    MpvObject *item = nullptr;
+
+    ~MpvCore() {
+        if (handle)
+            mpv_terminate_destroy(handle);
+    }
+
+    void post(void (MpvObject::*method)()) {
+        std::lock_guard lock(mutex);
+        if (item)
+            QMetaObject::invokeMethod(item, method, Qt::QueuedConnection);
+    }
+};
+
 class MpvRenderer : public QQuickFramebufferObject::Renderer {
 public:
-    explicit MpvRenderer(MpvObject *object) : m_object(object) {}
+    explicit MpvRenderer(std::shared_ptr<MpvCore> core) : m_core(std::move(core)) {}
+
+    ~MpvRenderer() override {
+        if (m_render)
+            mpv_render_context_free(m_render);
+    }
 
     QOpenGLFramebufferObject *createFramebufferObject(const QSize &size) override {
-        if (!m_object->m_render) {
+        if (!m_tried) {
+            // Tried once: a failure is reported, not retried on every resize.
+            m_tried = true;
             mpv_opengl_init_params gl{procAddress, nullptr};
-            int advanced = 1;
+            // No MPV_RENDER_PARAM_ADVANCED_CONTROL: with it, mpv queues work
+            // (screenshots, buffer allocation) for this thread and waits on
+            // it forever unless mpv_render_context_update() is called after
+            // every update callback. Without it, mpv's waits time out.
             QList<mpv_render_param> params{
                 {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
                 {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl},
-                {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced},
             };
             // Hardware decoding hands frames over without a copy only when
             // mpv knows the Wayland display it is drawing for.
             if (auto *wayland = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>())
                 params.append({MPV_RENDER_PARAM_WL_DISPLAY, wayland->display()});
             params.append({MPV_RENDER_PARAM_INVALID, nullptr});
-            if (mpv_render_context_create(&m_object->m_render, m_object->m_mpv, params.data()) < 0)
+            if (mpv_render_context_create(&m_render, m_core->handle, params.data()) < 0) {
+                m_render = nullptr;
                 qWarning("reel: could not create the mpv render context");
-            else {
+                m_core->post(&MpvObject::renderFailed);
+            } else {
+                mpv_render_context_set_update_callback(
+                    m_render, [](void *core) { static_cast<MpvCore *>(core)->post(&MpvObject::requestFrame); },
+                    m_core.get());
                 // Files asked for before this point wait for it, since mpv
                 // can't open video output without a render context.
-                QMetaObject::invokeMethod(m_object, &MpvObject::renderReady, Qt::QueuedConnection);
-                mpv_render_context_set_update_callback(
-                    m_object->m_render,
-                    [](void *context) {
-                        QMetaObject::invokeMethod(static_cast<MpvObject *>(context), &QQuickItem::update,
-                                                  Qt::QueuedConnection);
-                    },
-                    m_object);
+                m_core->post(&MpvObject::renderReady);
             }
         }
         return QQuickFramebufferObject::Renderer::createFramebufferObject(size);
     }
 
     void render() override {
-        if (!m_object->m_render)
-            return;
         QOpenGLFramebufferObject *fbo = framebufferObject();
+        if (!m_render) {
+            QOpenGLFunctions *gl = QOpenGLContext::currentContext()->functions();
+            gl->glClearColor(0, 0, 0, 1);
+            gl->glClear(GL_COLOR_BUFFER_BIT);
+            return;
+        }
         mpv_opengl_fbo target{static_cast<int>(fbo->handle()), fbo->width(), fbo->height(), 0};
         int flip = 0;
         mpv_render_param params[] = {
@@ -122,11 +164,13 @@ public:
             {MPV_RENDER_PARAM_FLIP_Y, &flip},
             {MPV_RENDER_PARAM_INVALID, nullptr},
         };
-        mpv_render_context_render(m_object->m_render, params);
+        mpv_render_context_render(m_render, params);
     }
 
 private:
-    MpvObject *m_object;
+    std::shared_ptr<MpvCore> m_core;
+    mpv_render_context *m_render = nullptr;
+    bool m_tried = false;
 };
 
 void MpvObject::setResumeLookup(std::function<double(const QString &)> lookup) {
@@ -137,7 +181,9 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     // libmpv parses numbers with the C locale and refuses to start otherwise.
     std::setlocale(LC_NUMERIC, "C");
 
-    m_mpv = mpv_create();
+    m_core = std::make_shared<MpvCore>();
+    m_core->handle = m_mpv = mpv_create();
+    m_core->item = this;
     if (!m_mpv)
         qFatal("reel: could not create mpv");
 
@@ -186,16 +232,23 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
 }
 
 MpvObject::~MpvObject() {
-    if (m_render)
-        mpv_render_context_free(m_render);
+    {
+        std::lock_guard lock(m_core->mutex);
+        m_core->item = nullptr;
+    }
     mpv_set_wakeup_callback(m_mpv, nullptr, nullptr);
-    mpv_terminate_destroy(m_mpv);
+    // Silence now; the core itself goes once the renderer has let go too.
+    runCommand(m_mpv, {"stop"});
 }
 
 QQuickFramebufferObject::Renderer *MpvObject::createRenderer() const {
     window()->setPersistentGraphics(true);
     window()->setPersistentSceneGraph(true);
-    return new MpvRenderer(const_cast<MpvObject *>(this));
+    return new MpvRenderer(m_core);
+}
+
+void MpvObject::requestFrame() {
+    update();
 }
 
 void MpvObject::processEvents() {
@@ -269,9 +322,8 @@ void MpvObject::handleEvent(mpv_event *event) {
         break;
     }
     case MPV_EVENT_COMMAND_REPLY: {
-        const QString tag = m_screenshots.take(event->reply_userdata);
-        if (event->error >= 0 && !tag.isNull())
-            emit screenshotSaved(tag);
+        if (m_screenshots.contains(event->reply_userdata))
+            emit screenshotFinished(m_screenshots.take(event->reply_userdata), event->error >= 0);
         break;
     }
     case MPV_EVENT_LOG_MESSAGE: {
@@ -284,6 +336,13 @@ void MpvObject::handleEvent(mpv_event *event) {
     }
 }
 
+void MpvObject::renderFailed() {
+    m_renderFailed = true;
+    emit videoOutputFailed();
+    if (!m_pendingFiles.isEmpty())
+        loadFiles(std::exchange(m_pendingFiles, {}), m_pendingIndex);
+}
+
 void MpvObject::renderReady() {
     m_ready = true;
     if (!m_pendingFiles.isEmpty())
@@ -293,6 +352,10 @@ void MpvObject::renderReady() {
 void MpvObject::loadFiles(const QStringList &files, int index) {
     if (files.isEmpty())
         return;
+    if (m_renderFailed) {
+        emit failed(files.value(index), tr("There's no OpenGL video output, so video can't be shown."));
+        return;
+    }
     if (!m_ready) {
         m_pendingFiles = files;
         m_pendingIndex = index;
@@ -305,15 +368,22 @@ void MpvObject::loadFiles(const QStringList &files, int index) {
     mpv_set_property_string(m_mpv, "pause", "no");
 }
 
-void MpvObject::command(const QVariantList &args) {
+bool MpvObject::command(const QVariantList &args) {
     QList<QByteArray> strings;
     for (const auto &arg : args)
         strings.append(toArgument(arg));
-    runCommand(m_mpv, strings);
+    const int error = runCommand(m_mpv, strings);
+    if (error < 0)
+        qWarning("reel: mpv command %s failed: %s", strings.value(0).constData(), mpv_error_string(error));
+    return error >= 0;
 }
 
-void MpvObject::set(const QString &name, const QVariant &value) {
-    mpv_set_property_string(m_mpv, name.toUtf8().constData(), toArgument(value).constData());
+bool MpvObject::set(const QString &name, const QVariant &value) {
+    const QByteArray text = toArgument(value);
+    const int error = mpv_set_property_string(m_mpv, name.toUtf8().constData(), text.constData());
+    if (error < 0)
+        qWarning("reel: setting %s to %s failed: %s", qPrintable(name), text.constData(), mpv_error_string(error));
+    return error >= 0;
 }
 
 QVariant MpvObject::get(const QString &name) const {
@@ -355,6 +425,6 @@ void MpvObject::playIndex(int index) {
 void MpvObject::screenshotTo(const QString &file, const QString &tag, bool withSubtitles) {
     const QList<QByteArray> args{"screenshot-to-file", file.toUtf8(), withSubtitles ? "subtitles" : "video"};
     const quint64 reply = m_nextReply++;
-    m_screenshots.insert(reply, tag.isNull() ? QString("") : tag);
+    m_screenshots.insert(reply, tag);
     runCommand(m_mpv, args, reply);
 }

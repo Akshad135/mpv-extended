@@ -39,6 +39,7 @@ FocusScope {
     onTotalChanged: if (selection >= total) selection = total - 1
 
     Keys.onPressed: (event) => {
+        if (app.helpVisible) return
         if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
             move(event.key); event.accepted = true
         } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && selection >= 0) {

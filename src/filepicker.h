@@ -27,6 +27,7 @@ private slots:
     void onResponse(uint response, const QVariantMap &results);
 
 private:
+    void unsubscribe();
     void request(const QString &title, const QString &purpose, bool directory, bool multiple, int filters);
 
     QString m_requestPath;

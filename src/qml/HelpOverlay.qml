@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 // Every shortcut, on ? .
 Rectangle {
@@ -68,20 +69,30 @@ Rectangle {
             font.pixelSize: 17
             font.weight: Font.DemiBold
         }
-        Flow {
-            id: grid
+        // Scrolls when the window is too small to show every group.
+        Flickable {
+            id: scroller
             anchors.top: heading.bottom
             anchors.topMargin: 18
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.bottom: parent.bottom
             anchors.leftMargin: 28
             anchors.rightMargin: 28
+            anchors.bottomMargin: 12
+            contentHeight: grid.implicitHeight + 12
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        Flow {
+            id: grid
+            width: scroller.width
             spacing: 28
             Repeater {
                 model: help.groups
                 Column {
                     required property var modelData
-                    width: grid.width >= 700 ? (grid.width - 28) / 2 : grid.width
+                    width: grid.width >= 560 ? (grid.width - 28) / 2 : grid.width
                     spacing: 6
                     Text {
                         text: modelData.title
@@ -128,6 +139,7 @@ Rectangle {
                     }
                 }
             }
+        }
         }
     }
 }

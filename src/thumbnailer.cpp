@@ -1,6 +1,8 @@
 #include "thumbnailer.h"
 
+#include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -9,6 +11,8 @@
 #include <QUrl>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <utime.h>
 
 namespace {
 constexpr int parallel = 3;
@@ -19,7 +23,18 @@ Thumbnailer::Thumbnailer(const QString &cacheDirectory, const QString &ffmpeg, Q
       m_cacheDirectory(cacheDirectory.isEmpty()
                            ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/reel/frames"
                            : cacheDirectory),
-      m_ffmpeg(ffmpeg.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : ffmpeg) {}
+      m_ffmpeg(ffmpeg.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : ffmpeg) {
+    prune();
+}
+
+// Frames of files not watched for a month are dropped, so the cache doesn't
+// grow forever.
+void Thumbnailer::prune() {
+    const QDateTime cutoff = QDateTime::currentDateTime().addDays(-30);
+    for (const QFileInfo &entry : QDir(m_cacheDirectory).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot))
+        if (entry.lastModified() < cutoff)
+            QDir(entry.absoluteFilePath()).removeRecursively();
+}
 
 Thumbnailer::~Thumbnailer() {
     reset();
@@ -60,11 +75,12 @@ int Thumbnailer::nearest(const QSet<int> &done, int wanted, int count) {
 }
 
 void Thumbnailer::reset() {
+    // Never waits: a killed ffmpeg cleans itself up when it exits.
     for (QProcess *process : std::as_const(m_running)) {
         process->disconnect(this);
+        connect(process, &QProcess::finished, process, &QObject::deleteLater);
+        connect(process, &QProcess::errorOccurred, process, &QObject::deleteLater);
         process->kill();
-        process->waitForFinished(500);
-        process->deleteLater();
     }
     m_running.clear();
     m_queue.clear();
@@ -75,7 +91,7 @@ void Thumbnailer::reset() {
 void Thumbnailer::prepare(const QString &path, double duration) {
     const QFileInfo info(path);
     const int count = frameCount(duration);
-    if (path == m_path && count == m_count)
+    if (path == m_path && count == m_count && qAbs(duration - m_duration) < 1)
         return;
     reset();
     m_path = path;
@@ -88,10 +104,13 @@ void Thumbnailer::prepare(const QString &path, double duration) {
 
     const QByteArray key = QCryptographicHash::hash(
         (info.absoluteFilePath() + "|" + QString::number(info.size()) + "|" +
-         QString::number(info.lastModified().toMSecsSinceEpoch())).toUtf8(),
+         QString::number(info.lastModified().toMSecsSinceEpoch()) + "|" + QString::number(count) + "|" +
+         QString::number(qRound64(duration))).toUtf8(),
         QCryptographicHash::Sha1).toHex();
     m_directory = m_cacheDirectory + "/" + QString::fromLatin1(key.left(20));
     QDir().mkpath(m_directory);
+    // Touched so pruning sees it as in use.
+    ::utime(QFile::encodeName(m_directory).constData(), nullptr);
     m_count = count;
     for (int index : order(count)) {
         if (QFileInfo::exists(QString("%1/%2.jpg").arg(m_directory).arg(index)))
@@ -110,7 +129,9 @@ void Thumbnailer::pump() {
     while (m_running.size() < parallel && !m_queue.isEmpty()) {
         const int index = m_queue.takeFirst();
         const QString target = QString("%1/%2.jpg").arg(m_directory).arg(index);
-        const QString partial = target + ".part.jpg";
+        // Unique per process, so two Reel windows previewing the same file
+        // never write into each other's partial frame.
+        const QString partial = QString("%1.%2.part.jpg").arg(target).arg(QCoreApplication::applicationPid());
         const double at = (index + .5) / m_count * m_duration;
 
         auto *process = new QProcess(this);
@@ -124,8 +145,8 @@ void Thumbnailer::pump() {
             // Renamed into place only once complete, so a half-written frame
             // is never shown.
             if (code == 0 && QFileInfo(partial).size() > 0) {
-                QFile::remove(target);
-                if (QFile::rename(partial, target)) {
+                // rename(2) replaces the target atomically.
+                if (::rename(QFile::encodeName(partial).constData(), QFile::encodeName(target).constData()) == 0) {
                     m_done.insert(index);
                     ++m_revision;
                     emit revisionChanged();
