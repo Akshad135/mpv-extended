@@ -157,6 +157,39 @@ private slots:
         QVERIFY(first != second);
     }
 
+    void forgetSticksEvenIfTheClockWentBack()
+    {
+        QTemporaryDir data, cache;
+        const qint64 future = QDateTime::currentMSecsSinceEpoch() + 3600 * 1000;
+        touch(data.filePath("history.json"),
+              QString(R"({"version":1,"items":[{"path":"/films/a.mkv","title":"A","position":600,"duration":2400,"lastPlayed":%1}]})")
+                  .arg(future).toUtf8());
+        Library other(data.path(), cache.path()); // loaded before the removal
+        {
+            Library library(data.path(), cache.path());
+            library.forget("/films/a.mkv");
+            library.save();
+            QCOMPARE(library.resumePosition("/films/a.mkv"), 0.0);
+        }
+        other.update("/films/b.mkv", "B", 300, 2400);
+        other.save();
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/a.mkv"), 0.0);
+        QCOMPARE(fresh.resumePosition("/films/b.mkv"), 300.0);
+    }
+
+    void historyDamagedWhileOpenIsKeptAside()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        library.update("/films/a.mkv", "A", 600, 2400);
+        library.save();
+        touch(data.filePath("history.json"), "{ damaged");
+        library.update("/films/b.mkv", "B", 300, 2400);
+        library.save();
+        QCOMPARE(QDir(data.path()).entryList({"history.json.bad-*"}).size(), 1);
+    }
+
     void unreadableHistoryIsKeptAside()
     {
         QTemporaryDir data, cache;
@@ -244,6 +277,14 @@ private slots:
         QVERIFY(QFileInfo(frame).size() > 0);
         QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
 
+        // A "%d" in the name stays literal, not a frame-number pattern.
+        result = -1;
+        const QString percent = dir.filePath("Show %d 1.00.jpg");
+        grabFrameWithFfmpeg(&owner, clip, 1.5, percent, [&](bool ok) { result = ok; });
+        QTRY_COMPARE_WITH_TIMEOUT(result, 1, 10000);
+        QVERIFY(QFileInfo(percent).size() > 0);
+        QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
+
         result = -1;
         grabFrameWithFfmpeg(&owner, dir.filePath("missing.mkv"), 1, frame, [&](bool ok) { result = ok; });
         QCOMPARE(result, 0);
@@ -288,6 +329,9 @@ private slots:
         touch(response, "{\"int\":0}");
 
         Theme theme(dir.path(), nullptr, command);
+        QTRY_COMPARE(theme.radius(), 0);
+        // Asked again while a query is still running: it must run once more.
+        theme.refreshRounding();
         QTRY_COMPARE(theme.radius(), 0);
         touch(response, "{\"int\":6}");
         theme.refreshRounding();

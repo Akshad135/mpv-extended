@@ -38,5 +38,8 @@ void grabFrameWithFfmpeg(QObject *owner, const QString &input, double position, 
     });
     process->start(program, {"-hide_banner", "-loglevel", "error", "-nostdin", "-ss",
                              QString::number(qMax(0.0, position), 'f', 3), "-i", input, "-frames:v", "1",
-                             "-an", "-sn", "-q:v", "3", "-y", partial});
+                             "-an", "-sn", "-q:v", "3",
+                             // One picture, not a numbered sequence: a "%d" in the
+                             // title must stay literal.
+                             "-update", "1", "-y", partial});
 }

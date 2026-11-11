@@ -104,15 +104,18 @@ QHash<QString, Library::Entry> Library::readEntries(const QString &path, Tombsto
 void Library::load() {
     bool ok = true;
     m_entries = readEntries(m_dataFile, &m_forgotten, &ok);
-    if (!ok) {
-        // Kept aside rather than overwritten by the next save, so a damaged
-        // history can still be recovered by hand.
-        const QString aside = m_dataFile + ".bad-" + QString::number(QDateTime::currentMSecsSinceEpoch());
-        if (QFile::rename(m_dataFile, aside))
-            qWarning("mpv-extended: history was unreadable; moved it to %s", qPrintable(aside));
-        else
-            qWarning("mpv-extended: history is unreadable and couldn't be moved aside: %s", qPrintable(m_dataFile));
-    }
+    if (!ok)
+        keepAside();
+}
+
+// A damaged history is moved aside rather than overwritten by the next save,
+// so it can still be recovered by hand.
+void Library::keepAside() {
+    const QString aside = m_dataFile + ".bad-" + QString::number(QDateTime::currentMSecsSinceEpoch());
+    if (QFile::rename(m_dataFile, aside))
+        qWarning("mpv-extended: history was unreadable; moved it to %s", qPrintable(aside));
+    else
+        qWarning("mpv-extended: history is unreadable and couldn't be moved aside: %s", qPrintable(m_dataFile));
 }
 
 void Library::save() {
@@ -138,6 +141,8 @@ void Library::save() {
     bool ok = true;
     Tombstones forgottenOnDisk;
     const auto onDisk = readEntries(m_dataFile, &forgottenOnDisk, &ok);
+    if (!ok)
+        keepAside(); // Damaged since this window loaded it.
     if (ok) {
         for (auto it = forgottenOnDisk.begin(); it != forgottenOnDisk.end(); ++it)
             if (it.value() > m_forgotten.value(it.key(), 0))
@@ -146,6 +151,10 @@ void Library::save() {
             const auto mine = m_entries.constFind(it.key());
             if (mine == m_entries.constEnd() || mine->lastPlayed < it->lastPlayed)
                 m_entries.insert(it.key(), it.value());
+            // A removal made here outranks the copy it was meant to remove,
+            // even one stamped ahead by a clock that has since stepped back.
+            if (m_freshlyForgotten.contains(it.key()) && it->lastPlayed >= m_forgotten.value(it.key(), 0))
+                m_forgotten.insert(it.key(), it->lastPlayed + 1);
         }
     }
     const qint64 expired = QDateTime::currentMSecsSinceEpoch() - tombstoneLifetime;
@@ -182,8 +191,10 @@ void Library::save() {
     }
     file.write(QJsonDocument(QJsonObject{{"version", 1}, {"items", items}, {"forgotten", forgotten}})
                    .toJson(QJsonDocument::Compact));
-    if (file.commit())
+    if (file.commit()) {
         m_dirty = false;
+        m_freshlyForgotten.clear();
+    }
     else
         qWarning("mpv-extended: can't save %s", qPrintable(m_dataFile));
     if (removed)
@@ -239,7 +250,11 @@ void Library::update(const QString &path, const QString &title, double position,
 }
 
 void Library::forget(const QString &path) {
-    m_forgotten.insert(path, QDateTime::currentMSecsSinceEpoch());
+    // After the entry's own stamp, which may be ahead of the clock.
+    const auto entry = m_entries.constFind(path);
+    const qint64 played = entry == m_entries.constEnd() ? 0 : entry->lastPlayed;
+    m_forgotten.insert(path, std::max(QDateTime::currentMSecsSinceEpoch(), played + 1));
+    m_freshlyForgotten.insert(path);
     touch();
     if (m_entries.remove(path)) {
         QFile::remove(thumbnailFile(path));

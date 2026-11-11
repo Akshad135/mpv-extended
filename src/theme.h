@@ -80,6 +80,7 @@ private:
     int m_radius = 0;
     QProcess m_roundingProcess;
     QTimer m_roundingTimeout;
+    bool m_roundingAgain = false;
     QLocalSocket m_hyprEvents;
     QByteArray m_hyprEventBuffer;
 };

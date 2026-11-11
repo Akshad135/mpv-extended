@@ -75,6 +75,9 @@ bin/test                    # unit tests, offscreen
 build/mpv-extended ~/Videos # play a folder
 ```
 
+It uses one Qt platform header (to keep the screen awake on Wayland), so
+rebuild after a Qt minor upgrade, as with other Qt apps from the AUR.
+
 History lives in `~/.local/share/mpv-extended/history.json`; frames are
 cached in `~/.cache/mpv-extended`.
 

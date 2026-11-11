@@ -27,6 +27,8 @@ Item {
         return Number(s).toLocaleString(Qt.locale(), 'f', 2).replace(/[.,]?0+$/, "") + "×"
     }
     property bool upNextCancelled: false
+    // Up next has started the next file and is waiting for the frame grab.
+    property bool upNextStarted: false
     property bool showRemaining: false
     readonly property bool menusOpen: tracksSheet.opened || speedSheet.opened || playlistOpen
     readonly property bool controlsShown: player.paused || idleTimer.running || menusOpen
@@ -97,8 +99,11 @@ Item {
     // The file after the one that just ended, by position, so repeats can't
     // skip ahead. Does nothing once Up next is cancelled or a switch began.
     function playUpNext() {
-        if (!upNext.available) return
+        if (!upNext.available || upNextStarted) return
+        upNext.startedEntry = upNext.entry
+        upNextStarted = true
         countdown.stop()
+        upNext.progress = 1
         app.playAt(player.playlistPos + 1)
     }
     // A queue that shrinks to one file has nothing to show, and P and the
@@ -118,9 +123,9 @@ Item {
 
     Connections {
         target: overlay.player
-        function onFileLoaded() { overlay.loaded = true; overlay.upNextCancelled = false; overlay.wake() }
+        function onFileLoaded() { overlay.loaded = true; overlay.upNextCancelled = false; overlay.upNextStarted = false; overlay.wake() }
         function onPathChanged() { overlay.loaded = false }
-        function onEofChanged() { if (!overlay.player.eof) overlay.upNextCancelled = false }
+        function onEofChanged() { if (!overlay.player.eof) { overlay.upNextCancelled = false; overlay.upNextStarted = false } }
     }
 
     Timer { id: idleTimer; interval: 2600 }
@@ -161,14 +166,17 @@ Item {
     }
 
     // Audio without artwork gets a calm card instead of a black window.
+    // Centred in the space between the top bar and the dock; the artwork
+    // shrinks in short windows so the text stays clear of both.
     Column {
         visible: !overlay.app.hasPicture && !overlay.player.idle && overlay.loaded
-        anchors.centerIn: parent
-        anchors.verticalCenterOffset: -40
-        spacing: 18
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: topBar.height + (overlay.height - topBar.height - dock.height - 32 - height) / 2
+        spacing: overlay.height < 500 ? 10 : 18
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: 200; height: 200
+            width: Math.max(72, Math.min(200, overlay.height - topBar.height - dock.height - 32 - 100))
+            height: width
             radius: theme.radius
             gradient: Gradient {
                 GradientStop { position: 0; color: theme.mix(theme.surface, theme.accent, 0.22) }
@@ -325,7 +333,7 @@ Item {
     // The end of the last file: watch again or go back.
     Row {
         id: endActions
-        visible: overlay.player.eof && !upNext.available
+        visible: overlay.player.eof && !upNext.available && overlay.app.switchTarget < 0 && !overlay.app.goingHome
         anchors.centerIn: parent
         spacing: 12
         Repeater {
@@ -589,14 +597,26 @@ Item {
     // What plays next, counting down at the end of a file.
     Rectangle {
         id: upNext
-        // Gone as soon as any switch starts, so the countdown and a click
-        // can never both advance.
+        // Stays up while its own switch waits for the frame (upNextStarted,
+        // inert), and goes for any other switch or a trip to the library.
         readonly property bool available: overlay.player.eof && overlay.hasPlaylist && !overlay.upNextCancelled
-                                          && overlay.app.switchTarget < 0 && !overlay.app.goingHome
+                                          && (overlay.upNextStarted || overlay.app.switchTarget < 0) && !overlay.app.goingHome
                                           && overlay.player.playlistPos < overlay.player.playlist.length - 1
-        readonly property var entry: available ? overlay.player.playlist[overlay.player.playlistPos + 1] : null
+        // Kept once started: the playlist position moves before the new file
+        // has loaded, and the card would otherwise name the one after.
+        property var startedEntry: null
+        readonly property var entry: overlay.upNextStarted ? startedEntry
+                                   : available ? overlay.player.playlist[overlay.player.playlistPos + 1] : null
         property real progress: 0
-        onAvailableChanged: available ? countdown.restart() : countdown.stop()
+        onAvailableChanged: {
+            if (available && !overlay.upNextStarted) {
+                countdown.restart()
+                // The queue panel would cover the card.
+                overlay.playlistOpen = false
+            } else if (!available) {
+                countdown.stop()
+            }
+        }
 
         anchors.right: parent.right
         anchors.rightMargin: 24
@@ -640,7 +660,7 @@ Item {
                 clip: true
                 Rectangle { width: parent.width * upNext.progress; height: parent.height; color: theme.alpha(theme.accentText, 0.14) }
                 Text { id: playNow; anchors.centerIn: parent; text: qsTr("Play now  ↵"); color: theme.accentText; font.pixelSize: 12; font.weight: Font.DemiBold }
-                MouseArea { anchors.fill: parent; enabled: upNext.visible; cursorShape: Qt.PointingHandCursor; onClicked: overlay.playUpNext() }
+                MouseArea { anchors.fill: parent; enabled: upNext.visible; cursorShape: overlay.upNextStarted ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: overlay.playUpNext() }
             }
             Rectangle {
                 width: cancelText.implicitWidth + 24; height: 30
@@ -648,7 +668,7 @@ Item {
                 color: cancelArea.containsMouse ? theme.alpha(theme.foreground, 0.1) : "transparent"
                 border.color: theme.alpha(theme.foreground, 0.16)
                 Text { id: cancelText; anchors.centerIn: parent; text: qsTr("Cancel"); color: theme.foreground; font.pixelSize: 12 }
-                MouseArea { id: cancelArea; anchors.fill: parent; enabled: upNext.visible; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (upNext.available) overlay.upNextCancelled = true }
+                MouseArea { id: cancelArea; anchors.fill: parent; enabled: upNext.visible; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (upNext.available && !overlay.upNextStarted) overlay.upNextCancelled = true }
             }
         }
     }
@@ -658,7 +678,7 @@ Item {
         player: overlay.player
         open: overlay.playlistOpen
         anchors.top: parent.top
-        anchors.topMargin: 16
+        anchors.topMargin: topBar.height
         anchors.bottom: parent.bottom
         anchors.bottomMargin: dock.height + 32
         width: Math.min(360, parent.width - 32)

@@ -69,6 +69,7 @@ private:
     QVariantMap toVariant(const Entry &entry) const;
     static QHash<QString, Entry> readEntries(const QString &path, Tombstones *forgotten, bool *ok);
     void load();
+    void keepAside();
     void touch();
     void trim();
 
@@ -77,6 +78,7 @@ private:
     QHash<QString, Entry> m_entries;
     Tombstones m_forgotten;
     mutable QSet<QString> m_capturesGiven;
+    QSet<QString> m_freshlyForgotten; // Removed here since the last save.
     QString m_captureDirectory;
     QTimer m_saveTimer;
     bool m_dirty = false;

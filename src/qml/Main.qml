@@ -152,7 +152,9 @@ ApplicationWindow {
             if (target >= 0 && target !== mpv.playlistPos) mpv.playIndex(target)
         })
     }
-    function playNext() { playAt(targetPos + 1) }
+    // When Up next is already starting the next file, N means that file:
+    // the switch is already the one wanted.
+    function playNext() { if (!overlay.upNextStarted) playAt(targetPos + 1) }
     function playPrevious() {
         // Like a CD player: past the first few seconds, back goes to the start.
         if (switchTarget < 0 && (mpv.position > 5 || mpv.playlistPos <= 0)) { mpv.seek(0, true); return }
@@ -314,16 +316,16 @@ ApplicationWindow {
 
     // Shortcuts. The player's are off in the library, where arrows move the
     // selection instead.
-    Shortcut { sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: win.close() }
-    Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; onActivated: win.handleEscape() }
-    Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; onActivated: win.toggleFullscreen() }
-    Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; onActivated: win.toggleFullscreen() }
-    Shortcut { sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; onActivated: picker.openFiles() }
-    Shortcut { sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; onActivated: picker.openFolder() }
-    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; onActivated: win.openClipboard() }
+    Shortcut { sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.close() }
+    Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.handleEscape() }
+    Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
+    Shortcut { sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
+    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
 
-    Shortcut { enabled: win.playerKeys; sequences: ["Space", "K"]; context: Qt.ApplicationShortcut; onActivated: overlay.togglePause() }
+    Shortcut { enabled: win.playerKeys; sequences: ["Space", "K"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.togglePause() }
     Shortcut { enabled: win.playerKeys; sequence: "Left"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.seekBy(-5) }
     Shortcut { enabled: win.playerKeys; sequence: "Right"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.seekBy(5) }
     Shortcut { enabled: win.playerKeys; sequence: "Shift+Left"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.seekBy(-1) }
@@ -333,24 +335,24 @@ ApplicationWindow {
     Shortcut { enabled: win.playerKeys; sequence: "Up"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.setVolume(mpv.volume + 5) }
     Shortcut { enabled: win.playerKeys; sequence: "Down"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.setVolume(mpv.volume - 5) }
     Shortcut {
-        enabled: win.playerKeys; sequence: "M"; context: Qt.ApplicationShortcut
+        enabled: win.playerKeys; sequence: "M"; context: Qt.ApplicationShortcut; autoRepeat: false
         onActivated: { mpv.set("mute", !mpv.muted); win.toast(mpv.muted ? "volume" : "muted", mpv.muted ? qsTr("Sound on") : qsTr("Muted")) }
     }
     Shortcut { enabled: win.playerKeys; sequence: ","; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: mpv.command(["frame-back-step"]) }
     Shortcut { enabled: win.playerKeys; sequence: "."; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: mpv.command(["frame-step"]) }
-    Shortcut { enabled: win.playerKeys; sequence: "["; context: Qt.ApplicationShortcut; onActivated: overlay.setSpeed(mpv.speed - 0.25) }
-    Shortcut { enabled: win.playerKeys; sequence: "]"; context: Qt.ApplicationShortcut; onActivated: overlay.setSpeed(mpv.speed + 0.25) }
-    Shortcut { enabled: win.playerKeys; sequence: "Backspace"; context: Qt.ApplicationShortcut; onActivated: overlay.setSpeed(1) }
-    Shortcut { enabled: win.playerKeys; sequence: "A"; context: Qt.ApplicationShortcut; onActivated: overlay.cycle("audio") }
-    Shortcut { enabled: win.playerKeys; sequence: "S"; context: Qt.ApplicationShortcut; onActivated: overlay.cycle("sub") }
-    Shortcut { enabled: win.playerKeys; sequence: "T"; context: Qt.ApplicationShortcut; onActivated: overlay.openTracks() }
-    Shortcut { enabled: win.playerKeys; sequence: "P"; context: Qt.ApplicationShortcut; onActivated: if (overlay.hasPlaylist) overlay.togglePlaylist() }
-    Shortcut { enabled: win.playerKeys; sequence: "N"; context: Qt.ApplicationShortcut; onActivated: win.playNext() }
-    Shortcut { enabled: win.playerKeys; sequence: "Shift+N"; context: Qt.ApplicationShortcut; onActivated: win.playPrevious() }
-    Shortcut { enabled: win.playerKeys; sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: overlay.playUpNext() }
-    Shortcut { enabled: win.playerKeys; sequence: "PgUp"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", -1]) }
-    Shortcut { enabled: win.playerKeys; sequence: "PgDown"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", 1]) }
-    Shortcut { enabled: win.playerKeys; sequence: "Ctrl+S"; context: Qt.ApplicationShortcut; onActivated: win.captureFrame() }
+    Shortcut { enabled: win.playerKeys; sequence: "["; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.setSpeed(mpv.speed - 0.25) }
+    Shortcut { enabled: win.playerKeys; sequence: "]"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.setSpeed(mpv.speed + 0.25) }
+    Shortcut { enabled: win.playerKeys; sequence: "Backspace"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.setSpeed(1) }
+    Shortcut { enabled: win.playerKeys; sequence: "A"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.cycle("audio") }
+    Shortcut { enabled: win.playerKeys; sequence: "S"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.cycle("sub") }
+    Shortcut { enabled: win.playerKeys; sequence: "T"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.openTracks() }
+    Shortcut { enabled: win.playerKeys; sequence: "P"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: if (overlay.hasPlaylist) overlay.togglePlaylist() }
+    Shortcut { enabled: win.playerKeys; sequence: "N"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.playNext() }
+    Shortcut { enabled: win.playerKeys; sequence: "Shift+N"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.playPrevious() }
+    Shortcut { enabled: win.playerKeys; sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.playUpNext() }
+    Shortcut { enabled: win.playerKeys; sequence: "PgUp"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: mpv.command(["add", "chapter", -1]) }
+    Shortcut { enabled: win.playerKeys; sequence: "PgDown"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: mpv.command(["add", "chapter", 1]) }
+    Shortcut { enabled: win.playerKeys; sequence: "Ctrl+S"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.captureFrame() }
     Instantiator {
         model: 10
         delegate: Shortcut {
@@ -358,6 +360,7 @@ ApplicationWindow {
             enabled: win.playerKeys && mpv.duration > 0
             sequence: String(index)
             context: Qt.ApplicationShortcut
+            autoRepeat: false
             onActivated: { mpv.seek(mpv.duration * index / 10, false); overlay.wake() }
         }
     }

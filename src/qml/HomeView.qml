@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "Keys.js" as KeyNames
 
 // The library: pick up where you left off, or open something new.
 FocusScope {
@@ -87,9 +88,9 @@ FocusScope {
             spacing: 8
             // Narrow windows keep the name readable: the secondary buttons
             // shrink to icons, with their names in the tooltip.
-            PillButton { icon: "link"; text: qsTr("Paste link"); hint: "Ctrl+V"; compact: home.width < 760; onClicked: home.app.openClipboard() }
-            PillButton { icon: "folder"; text: qsTr("Open folder"); hint: "Ctrl+Shift+O"; compact: home.width < 760; onClicked: picker.openFolder() }
-            PillButton { icon: "plus"; text: qsTr("Open"); hint: "Ctrl+O"; primary: true; onClicked: picker.openFiles() }
+            PillButton { icon: "link"; text: qsTr("Paste link"); hint: KeyNames.label("Ctrl+V"); compact: home.width < 760; onClicked: home.app.openClipboard() }
+            PillButton { icon: "folder"; text: qsTr("Open folder"); hint: KeyNames.label("Ctrl+Shift+O"); compact: home.width < 760; onClicked: picker.openFolder() }
+            PillButton { icon: "plus"; text: qsTr("Open"); hint: KeyNames.label("Ctrl+O"); primary: true; onClicked: picker.openFiles() }
             IconButton { icon: "help"; tip: qsTr("Shortcuts (?)"); anchors.verticalCenter: parent.verticalCenter; onClicked: home.app.helpVisible = !home.app.helpVisible }
         }
     }
@@ -103,9 +104,10 @@ FocusScope {
         anchors.bottom: parent.bottom
         Rectangle {
             anchors.centerIn: parent
-            anchors.verticalCenterOffset: -30
+            anchors.verticalCenterOffset: parent.height > 420 ? -30 : 0
             width: Math.min(parent.width - 64, 560)
-            height: 300
+            // Shorter in short windows, so it never reaches the header.
+            height: Math.min(300, parent.height - 32)
             radius: theme.radius
             color: home.app.dropActive ? theme.alpha(theme.accent, 0.08) : theme.alpha(theme.surface, 0.5)
             border.width: 1

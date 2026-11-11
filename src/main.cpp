@@ -100,7 +100,16 @@ int main(int argc, char *argv[]) {
     // saved just as when the window is closed by hand.
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, signalPipe) == 0) {
         struct sigaction action {};
-        action.sa_handler = [](int) {
+        action.sa_handler = [](int signal) {
+            // The first asks the window to close and save; a second one
+            // means it; the default action ends the process even if the
+            // window is stuck.
+            static volatile sig_atomic_t received = 0;
+            if (received++) {
+                ::signal(signal, SIG_DFL);
+                ::raise(signal);
+                return;
+            }
             const char byte = 1;
             [[maybe_unused]] auto written = ::write(signalPipe[0], &byte, 1);
         };

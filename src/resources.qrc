@@ -13,6 +13,7 @@
         <file alias="RecentRow.qml">qml/RecentRow.qml</file>
         <file alias="HelpOverlay.qml">qml/HelpOverlay.qml</file>
         <file alias="Toast.qml">qml/Toast.qml</file>
+        <file alias="Keys.js">qml/Keys.js</file>
         <file alias="i18n/en.json">i18n/en.json</file>
     </qresource>
 </RCC>
