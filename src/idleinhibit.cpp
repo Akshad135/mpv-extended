@@ -38,7 +38,7 @@ IdleInhibit::IdleInhibit(QObject *parent) : QObject(parent) {
     wl_registry_add_listener(m_registry, &registryListener, &m_manager);
     wl_display_roundtrip_queue(display, m_queue);
     if (!m_manager)
-        qWarning("reel: the compositor has no idle-inhibit protocol; the screen may sleep during video");
+        qWarning("mpv-extended: the compositor has no idle-inhibit protocol; the screen may sleep during video");
 }
 
 IdleInhibit::~IdleInhibit() {

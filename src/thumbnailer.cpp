@@ -21,7 +21,7 @@ constexpr int parallel = 3;
 Thumbnailer::Thumbnailer(const QString &cacheDirectory, const QString &ffmpeg, QObject *parent)
     : QObject(parent),
       m_cacheDirectory(cacheDirectory.isEmpty()
-                           ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/reel/frames"
+                           ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/mpv-extended/frames"
                            : cacheDirectory),
       m_ffmpeg(ffmpeg.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : ffmpeg) {
     prune();
@@ -129,7 +129,7 @@ void Thumbnailer::pump() {
     while (m_running.size() < parallel && !m_queue.isEmpty()) {
         const int index = m_queue.takeFirst();
         const QString target = QString("%1/%2.jpg").arg(m_directory).arg(index);
-        // Unique per process, so two Reel windows previewing the same file
+        // Unique per process, so two windows previewing the same file
         // never write into each other's partial frame.
         const QString partial = QString("%1.%2.part.jpg").arg(target).arg(QCoreApplication::applicationPid());
         const double at = (index + .5) / m_count * m_duration;

@@ -12,7 +12,7 @@
 #include "thumbnailer.h"
 #include "translator.h"
 
-class ReelTests : public QObject {
+class Tests : public QObject {
     Q_OBJECT
 
 private slots:
@@ -293,5 +293,5 @@ private:
     }
 };
 
-QTEST_MAIN(ReelTests)
-#include "reel_tests.moc"
+QTEST_MAIN(Tests)
+#include "tests.moc"

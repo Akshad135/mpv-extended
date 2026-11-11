@@ -72,7 +72,7 @@ FocusScope {
                 Glyph { anchors.centerIn: parent; anchors.horizontalCenterOffset: 1; width: 16; height: 16; name: "play"; color: theme.accentText }
             }
             Text {
-                text: "Reel"
+                text: "mpv-extended"
                 color: theme.strong
                 font.pixelSize: 20
                 font.weight: Font.Bold

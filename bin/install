@@ -1,7 +1,19 @@
 #!/bin/sh
+# Builds and installs the package from this checkout, including uncommitted
+# edits to tracked files, with the same PKGBUILD a release uses. Asks for
+# sudo to install.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-"$ROOT/bin/build"
-cd "$ROOT/pkgbuild"
-exec makepkg -fsi "$@"
+VERSION="$(sed -n 's/^pkgver=//p' "$ROOT/pkgbuild/PKGBUILD")"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+cp "$ROOT/pkgbuild/PKGBUILD" "$WORK/"
+# The tarball the PKGBUILD would download, made from the working tree instead.
+STASH="$(git -C "$ROOT" stash create)"
+git -C "$ROOT" archive --format=tar.gz --prefix="mpv-extended-$VERSION/" \
+  -o "$WORK/mpv-extended-$VERSION.tar.gz" "${STASH:-HEAD}"
+
+cd "$WORK"
+makepkg -fsi --skipchecksums "$@"

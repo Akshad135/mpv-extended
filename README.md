@@ -1,9 +1,11 @@
-# Reel
+# mpv-extended
 
-A video player for Omarchy. libmpv plays everything mpv plays; Reel is the
-part you see: a library that remembers where you stopped, a quiet player that
-gets out of the way, and colors and corners that follow your Omarchy theme
-live.
+A video player for Omarchy. libmpv plays everything mpv plays; mpv-extended
+is the part you see: a library that remembers where you stopped, a quiet
+player that gets out of the way, and colors and corners that follow your
+Omarchy theme live.
+
+It is an independent project built on libmpv, not part of mpv.
 
 ## What it does
 
@@ -37,14 +39,26 @@ live.
 | ↑ ↓ / M | Volume / mute |
 | A / S / T | Next audio / next subtitles / track menu |
 | N / Shift+N | Next or previous file |
+| Enter | At the end of a file: play the next one |
 | P | Queue |
 | F, F11 | Fullscreen |
-| Enter | At the end of a file: play the next one |
-| Ctrl+S | Save the frame to ~/Pictures/Reel |
+| Ctrl+S | Save the frame to ~/Pictures/mpv-extended |
 | Ctrl+O / Ctrl+Shift+O / Ctrl+V | Open files / a folder / a copied link |
+| Arrows, Enter, Delete | In the library: pick, play, remove from history |
 | Esc | Close, leave fullscreen, or go to the library |
 | ? | All shortcuts |
 | Q | Quit |
+
+## Install
+
+On Arch or Omarchy, from a clone of this repository:
+
+```sh
+bin/install          # builds the package and installs it with pacman (asks for sudo)
+```
+
+It then shows up in the app launcher, and `mpv-extended [file|folder|url]`
+works from a terminal.
 
 ## Build
 
@@ -53,11 +67,20 @@ The file picker needs an xdg-desktop-portal backend that provides a file
 chooser, such as `xdg-desktop-portal-gtk` (Omarchy has it).
 
 ```sh
-bin/build            # build/reel (CONFIG+=dev adds a screenshot hook for testing)
-bin/test             # unit tests, offscreen
-bin/install          # makepkg -fsi: installs reel, its icon, and launcher entry
-build/reel ~/Videos  # play a folder
+bin/build                   # build/mpv-extended (CONFIG+=dev adds a screenshot hook for testing)
+bin/test                    # unit tests, offscreen
+build/mpv-extended ~/Videos # play a folder
 ```
 
-History lives in `~/.local/share/reel/history.json`; frames are cached in
-`~/.cache/reel`.
+History lives in `~/.local/share/mpv-extended/history.json`; frames are
+cached in `~/.cache/mpv-extended`.
+
+## Releasing
+
+1. Set the version in `mpv-extended.pro` and `pkgbuild/PKGBUILD`.
+2. Tag `v<version>` and push the tag to GitHub.
+3. In `pkgbuild/`, run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

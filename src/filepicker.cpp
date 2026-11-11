@@ -92,7 +92,7 @@ void FilePicker::request(const QString &title, const QString &purpose, bool dire
 
     // Subscribe to the response before asking, at the path the portal will
     // use, so a fast answer can't arrive before anyone is listening.
-    const QString token = QString("reel%1").arg(QRandomGenerator::global()->generate());
+    const QString token = QString("mpv_extended%1").arg(QRandomGenerator::global()->generate());
     QString sender = bus.baseService().mid(1);
     sender.replace('.', '_');
     m_requestPath = QString("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, token);

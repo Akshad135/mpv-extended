@@ -1,25 +1,40 @@
-pkgname=reel
+# Maintainer: akshad135 <97957252+akshad135@users.noreply.github.com>
+pkgname=mpv-extended
 pkgver=0.1.0
 pkgrel=1
 pkgdesc='A video player for Omarchy, built on libmpv'
 arch=('x86_64' 'aarch64')
+url='https://github.com/akshad135/mpv-extended'
 license=('MIT')
 depends=('qt6-base' 'qt6-declarative' 'mpv' 'ffmpeg' 'wayland' 'xdg-desktop-portal' 'hicolor-icon-theme')
+makedepends=('wayland-protocols')
 optdepends=('yt-dlp: play links from YouTube and other sites'
             'xdg-desktop-portal-gtk: file picker on Hyprland and other wlroots desktops')
-makedepends=('wayland-protocols')
-source=()
-sha256sums=()
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Filled in at release time with updpkgsums, once the v$pkgver tag exists.
+sha256sums=('SKIP')
 
 build() {
-  cd "$startdir/.."
-  ./bin/build
+  cd "$pkgname-$pkgver"
+  mkdir -p build
+  cd build
+  qmake6 ../mpv-extended.pro
+  make
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  mkdir -p build-tests
+  cd build-tests
+  qmake6 ../tests/tests.pro
+  make
+  QT_QPA_PLATFORM=offscreen ./tests
 }
 
 package() {
-  cd "$startdir/.."
-  install -Dm755 build/reel "$pkgdir/usr/bin/reel"
+  cd "$pkgname-$pkgver"
+  install -Dm755 build/mpv-extended "$pkgdir/usr/bin/mpv-extended"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 "$startdir/reel.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/reel.svg"
-  install -Dm644 "$startdir/reel.desktop" "$pkgdir/usr/share/applications/reel.desktop"
+  install -Dm644 pkgbuild/mpv-extended.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/mpv-extended.svg"
+  install -Dm644 pkgbuild/mpv-extended.desktop "$pkgdir/usr/share/applications/mpv-extended.desktop"
 }

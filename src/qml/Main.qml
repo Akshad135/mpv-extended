@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Window
-import Reel
+import MpvExtended
 
 ApplicationWindow {
     id: win
@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 600
     minimumHeight: 380
     visible: true
-    title: inPlayer && mpv.title ? mpv.title + " — Reel" : "Reel"
+    title: inPlayer && mpv.title ? mpv.title + " — mpv-extended" : "mpv-extended"
     color: theme.deep
 
     Material.theme: theme.isLight ? Material.Light : Material.Dark

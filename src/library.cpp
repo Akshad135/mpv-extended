@@ -44,10 +44,10 @@ QString localPath(const QString &input) {
 Library::Library(const QString &dataDirectory, const QString &cacheDirectory, QObject *parent)
     : QObject(parent) {
     const QString data = dataDirectory.isEmpty()
-                             ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/reel"
+                             ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/mpv-extended"
                              : dataDirectory;
     m_cacheDirectory = cacheDirectory.isEmpty()
-                           ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/reel"
+                           ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/mpv-extended"
                            : cacheDirectory;
     m_dataFile = data + "/history.json";
     m_saveTimer.setSingleShot(true);
@@ -108,9 +108,9 @@ void Library::load() {
         // history can still be recovered by hand.
         const QString aside = m_dataFile + ".bad-" + QString::number(QDateTime::currentMSecsSinceEpoch());
         if (QFile::rename(m_dataFile, aside))
-            qWarning("reel: history was unreadable; moved it to %s", qPrintable(aside));
+            qWarning("mpv-extended: history was unreadable; moved it to %s", qPrintable(aside));
         else
-            qWarning("reel: history is unreadable and couldn't be moved aside: %s", qPrintable(m_dataFile));
+            qWarning("mpv-extended: history is unreadable and couldn't be moved aside: %s", qPrintable(m_dataFile));
     }
 }
 
@@ -119,7 +119,7 @@ void Library::save() {
     if (!m_dirty)
         return;
 
-    // Another Reel window may have saved since this one loaded. Merge per
+    // Another window may have saved since this one loaded. Merge per
     // file, newest play wins, so neither window erases the other's progress.
     // A removal wins over any play from before it, whichever window saves
     // first.
@@ -165,7 +165,7 @@ void Library::save() {
     // never leaves a half history behind.
     QSaveFile file(m_dataFile);
     if (!file.open(QIODevice::WriteOnly)) {
-        qWarning("reel: can't write %s", qPrintable(m_dataFile));
+        qWarning("mpv-extended: can't write %s", qPrintable(m_dataFile));
         return;
     }
     file.write(QJsonDocument(QJsonObject{{"version", 1}, {"items", items}, {"forgotten", forgotten}})
@@ -173,7 +173,7 @@ void Library::save() {
     if (file.commit())
         m_dirty = false;
     else
-        qWarning("reel: can't save %s", qPrintable(m_dataFile));
+        qWarning("mpv-extended: can't save %s", qPrintable(m_dataFile));
     if (removed)
         emit changed();
 }
@@ -336,7 +336,7 @@ QStringList Library::mediaIn(const QString &directory) {
             files.append(file);
     }
     if (visited > 50000)
-        qWarning("reel: stopped scanning %s after 50000 files", qPrintable(directory));
+        qWarning("mpv-extended: stopped scanning %s after 50000 files", qPrintable(directory));
     naturalSort(files);
     return files;
 }
@@ -388,7 +388,7 @@ QString Library::frameCaptureFile(const QString &title, double position) const {
     QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
     if (pictures.isEmpty())
         pictures = QDir::homePath();
-    const QString directory = pictures + "/Reel";
+    const QString directory = pictures + "/mpv-extended";
     QDir().mkpath(directory);
     QString name = title;
     name.replace(QRegularExpression(R"([/\\:*?"<>|]+)"), " ");

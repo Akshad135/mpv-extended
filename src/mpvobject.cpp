@@ -137,7 +137,7 @@ public:
             params.append({MPV_RENDER_PARAM_INVALID, nullptr});
             if (mpv_render_context_create(&m_render, m_core->handle, params.data()) < 0) {
                 m_render = nullptr;
-                qWarning("reel: could not create the mpv render context");
+                qWarning("mpv-extended: could not create the mpv render context");
                 m_core->post(&MpvObject::renderFailed);
             } else {
                 mpv_render_context_set_update_callback(
@@ -187,7 +187,7 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     m_core->handle = m_mpv = mpv_create();
     m_core->item = this;
     if (!m_mpv)
-        qFatal("reel: could not create mpv");
+        qFatal("mpv-extended: could not create mpv");
 
     const QList<QPair<const char *, const char *>> options{
         {"vo", "libmpv"},
@@ -218,7 +218,7 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     mpv_request_log_messages(m_mpv, "warn");
 
     if (mpv_initialize(m_mpv) < 0)
-        qFatal("reel: could not initialize mpv");
+        qFatal("mpv-extended: could not initialize mpv");
 
     for (const char *name : observed)
         mpv_observe_property(m_mpv, 0, name, MPV_FORMAT_NODE);
@@ -385,7 +385,7 @@ bool MpvObject::command(const QVariantList &args) {
         strings.append(toArgument(arg));
     const int error = runCommand(m_mpv, strings);
     if (error < 0)
-        qWarning("reel: mpv command %s failed: %s", strings.value(0).constData(), mpv_error_string(error));
+        qWarning("mpv-extended: mpv command %s failed: %s", strings.value(0).constData(), mpv_error_string(error));
     return error >= 0;
 }
 
@@ -393,7 +393,7 @@ bool MpvObject::set(const QString &name, const QVariant &value) {
     const QByteArray text = toArgument(value);
     const int error = mpv_set_property_string(m_mpv, name.toUtf8().constData(), text.constData());
     if (error < 0)
-        qWarning("reel: setting %s to %s failed: %s", qPrintable(name), text.constData(), mpv_error_string(error));
+        qWarning("mpv-extended: setting %s to %s failed: %s", qPrintable(name), text.constData(), mpv_error_string(error));
     return error >= 0;
 }
 

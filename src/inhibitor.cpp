@@ -28,7 +28,7 @@ void Inhibitor::setActive(bool active) {
         call->deleteLater();
         QDBusPendingReply<QDBusObjectPath> reply = *call;
         if (reply.isError()) {
-            qWarning("reel: can't keep the screen awake: %s", qPrintable(reply.error().message()));
+            qWarning("mpv-extended: can't keep the screen awake: %s", qPrintable(reply.error().message()));
             return;
         }
         const QString handle = reply.value().path();

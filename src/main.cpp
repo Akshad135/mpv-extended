@@ -1,4 +1,4 @@
-// reel — a video player for Omarchy, built on libmpv.
+// mpv-extended — a video player for Omarchy, built on libmpv.
 
 #include <QDir>
 #include <QFileInfo>
@@ -27,26 +27,26 @@ int main(int argc, char *argv[]) {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName("reel");
-    app.setApplicationDisplayName("Reel");
+    app.setApplicationName("mpv-extended");
+    app.setApplicationDisplayName("mpv-extended");
     app.setApplicationVersion(QStringLiteral(APP_VERSION));
 
     const QStringList args = app.arguments().mid(1);
     if (args.contains("--help") || args.contains("-h")) {
-        QTextStream(stdout) << "Usage: reel [file|folder|url ...]\n\n"
+        QTextStream(stdout) << "Usage: mpv-extended [file|folder|url ...]\n\n"
                                "Plays video and audio. A folder plays everything in it; a single file\n"
                                "plays with the other files beside it queued up next.\n";
         return 0;
     }
     if (args.contains("--version")) {
-        QTextStream(stdout) << "reel " << app.applicationVersion() << "\n";
+        QTextStream(stdout) << "mpv-extended " << app.applicationVersion() << "\n";
         return 0;
     }
 
-    // Matches the window to reel.desktop, so the compositor (Wayland app_id)
+    // Matches the window to mpv-extended.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
-    app.setDesktopFileName("reel");
-    app.setWindowIcon(QIcon::fromTheme("reel"));
+    app.setDesktopFileName("mpv-extended");
+    app.setWindowIcon(QIcon::fromTheme("mpv-extended"));
 
     QQuickStyle::setStyle("Material");
 
@@ -61,9 +61,9 @@ int main(int argc, char *argv[]) {
     FilePicker picker;
     Inhibitor inhibitor;
     MpvObject::setResumeLookup([&library](const QString &path) { return library.resumePosition(path); });
-    qmlRegisterType<MpvObject>("Reel", 1, 0, "MpvVideo");
+    qmlRegisterType<MpvObject>("MpvExtended", 1, 0, "MpvVideo");
 
-    // Relative paths are resolved here, against the directory reel started in.
+    // Relative paths are resolved here, against the directory it started in.
     QStringList inputs;
     for (const auto &arg : args) {
         if (arg.startsWith("--"))
@@ -86,30 +86,30 @@ int main(int argc, char *argv[]) {
         return 1;
     inhibitor.setWindow(qobject_cast<QWindow *>(engine.rootObjects().first()));
 
-#ifdef REEL_DEV
-    // Development aid, only in `bin/build CONFIG+=dev` builds: REEL_GRAB=out.png saves the window after REEL_GRAB_AFTER
-    // milliseconds (and after evaluating REEL_GRAB_EVAL in the window's QML
+#ifdef MPV_EXTENDED_DEV
+    // Development aid, only in `bin/build CONFIG+=dev` builds: MPV_EXTENDED_GRAB=out.png saves the window after MPV_EXTENDED_GRAB_AFTER
+    // milliseconds (and after evaluating MPV_EXTENDED_GRAB_EVAL in the window's QML
     // scope, to set up a state), then quits. It lets the interface be checked
     // without anyone watching the screen.
-    if (const QString grab = qEnvironmentVariable("REEL_GRAB"); !grab.isEmpty()) {
+    if (const QString grab = qEnvironmentVariable("MPV_EXTENDED_GRAB"); !grab.isEmpty()) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
         if (!window) {
-            qWarning("REEL_GRAB: the root object isn't a window");
+            qWarning("MPV_EXTENDED_GRAB: the root object isn't a window");
             return 1;
         }
-        const int after = qEnvironmentVariableIntValue("REEL_GRAB_AFTER") ?: 2500;
-        const QString script = qEnvironmentVariable("REEL_GRAB_EVAL");
+        const int after = qEnvironmentVariableIntValue("MPV_EXTENDED_GRAB_AFTER") ?: 2500;
+        const QString script = qEnvironmentVariable("MPV_EXTENDED_GRAB_EVAL");
         QTimer::singleShot(std::max(0, after - 700), window, [window, script] {
             if (!script.isEmpty()) {
                 QQmlExpression expression(QQmlEngine::contextForObject(window), window, script);
                 expression.evaluate();
                 if (expression.hasError())
-                    qWarning("REEL_GRAB_EVAL: %s", qPrintable(expression.error().toString()));
+                    qWarning("MPV_EXTENDED_GRAB_EVAL: %s", qPrintable(expression.error().toString()));
             }
         });
         QTimer::singleShot(after, window, [window, grab] {
             if (!window->grabWindow().save(grab))
-                qWarning("REEL_GRAB: couldn't save %s", qPrintable(grab));
+                qWarning("MPV_EXTENDED_GRAB: couldn't save %s", qPrintable(grab));
             QGuiApplication::quit();
         });
     }
