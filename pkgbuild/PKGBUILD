@@ -4,9 +4,10 @@ pkgrel=1
 pkgdesc='A video player for Omarchy, built on libmpv'
 arch=('x86_64' 'aarch64')
 license=('MIT')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'mpv' 'ffmpeg' 'xdg-desktop-portal')
-optdepends=('yt-dlp: play links from YouTube and other sites')
-makedepends=('gcc' 'make' 'pkgconf')
+depends=('qt6-base' 'qt6-declarative' 'mpv' 'ffmpeg' 'wayland' 'xdg-desktop-portal' 'hicolor-icon-theme')
+optdepends=('yt-dlp: play links from YouTube and other sites'
+            'xdg-desktop-portal-gtk: file picker on Hyprland and other wlroots desktops')
+makedepends=('wayland-protocols')
 source=()
 sha256sums=()
 

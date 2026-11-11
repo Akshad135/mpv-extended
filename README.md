@@ -16,9 +16,12 @@ live.
 - **Tracks.** Pick audio and subtitle tracks by language, or load a
   subtitle file.
 - **Links.** Paste a link (Ctrl+V); yt-dlp handles the rest.
-- **Keeps the screen awake** while video plays, through the desktop portal.
-- **Follows Omarchy.** The whole palette, light and dark themes, Hyprland's
-  corner rounding, and the Omarchy language.
+- **Keeps the screen awake** while video plays: Wayland idle-inhibit for
+  Hyprland and Omarchy, and the desktop portal for GNOME and KDE.
+- **Follows Omarchy.** The whole palette, light and dark themes, and
+  Hyprland's corner rounding, live. Text follows the Omarchy language once a
+  translation exists; only English ships today.
+- **Works elsewhere too.** Off Omarchy it falls back to a neutral dark theme.
 
 ## Shortcuts
 
@@ -35,7 +38,8 @@ live.
 | A / S / T | Next audio / next subtitles / track menu |
 | N / Shift+N | Next or previous file |
 | P | Queue |
-| F | Fullscreen |
+| F, F11 | Fullscreen |
+| Enter | At the end of a file: play the next one |
 | Ctrl+S | Save the frame to ~/Pictures/Reel |
 | Ctrl+O / Ctrl+Shift+O / Ctrl+V | Open files / a folder / a copied link |
 | Esc | Close, leave fullscreen, or go to the library |
@@ -44,10 +48,12 @@ live.
 
 ## Build
 
-Needs `qt6-base qt6-declarative qt6-wayland mpv ffmpeg` (all part of Omarchy).
+Needs `base-devel qt6-base qt6-declarative mpv ffmpeg wayland-protocols`.
+The file picker needs an xdg-desktop-portal backend that provides a file
+chooser, such as `xdg-desktop-portal-gtk` (Omarchy has it).
 
 ```sh
-bin/build            # build/reel
+bin/build            # build/reel (CONFIG+=dev adds a screenshot hook for testing)
 bin/test             # unit tests, offscreen
 bin/install          # makepkg -fsi: installs reel, its icon, and launcher entry
 build/reel ~/Videos  # play a folder

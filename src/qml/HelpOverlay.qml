@@ -32,8 +32,9 @@ Rectangle {
             ["T", qsTr("Audio and subtitle menu")],
         ]},
         { title: qsTr("Window and queue"), keys: [
-            ["F", qsTr("Fullscreen")],
+            ["F  F11", qsTr("Fullscreen")],
             ["N  Shift+N", qsTr("Next or previous file")],
+            ["Enter", qsTr("At the end, play the next file")],
             ["P", qsTr("Show the queue")],
             ["Ctrl+S", qsTr("Save the frame to Pictures")],
             ["Esc", qsTr("Close, leave fullscreen, or go to the library")],

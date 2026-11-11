@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -41,10 +42,32 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
             emit changed();
         }
     });
-    m_roundingPoll.setInterval(1000);
-    connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
-    if (!m_hyprctl.isEmpty())
-        m_roundingPoll.start();
+    // Hyprland announces config reloads (theme switches included) on its
+    // event socket, so there's nothing to poll. Focus coming back covers a
+    // rounding set at runtime with hyprctl keyword.
+    if (!m_hyprctl.isEmpty()) {
+        const QString signature = qEnvironmentVariable("HYPRLAND_INSTANCE_SIGNATURE");
+        const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (!signature.isEmpty() && !runtime.isEmpty()) {
+            connect(&m_hyprEvents, &QLocalSocket::readyRead, this, [this] {
+                m_hyprEventBuffer += m_hyprEvents.readAll();
+                bool reloaded = false;
+                for (qsizetype end; (end = m_hyprEventBuffer.indexOf('\n')) >= 0;) {
+                    reloaded |= m_hyprEventBuffer.startsWith("configreloaded>>");
+                    m_hyprEventBuffer.remove(0, end + 1);
+                }
+                if (reloaded)
+                    refreshRounding();
+            });
+            m_hyprEvents.connectToServer(runtime + "/hypr/" + signature + "/.socket2.sock", QIODevice::ReadOnly);
+        }
+        if (qGuiApp)
+            connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+                if (state == Qt::ApplicationActive)
+                    refreshRounding();
+            });
+        refreshRounding();
+    }
     reload();
 }
 

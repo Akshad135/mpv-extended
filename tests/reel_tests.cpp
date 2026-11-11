@@ -260,8 +260,9 @@ private slots:
         touch(response, "{\"int\":0}");
 
         Theme theme(dir.path(), nullptr, command);
-        QCOMPARE(theme.radius(), 0);
+        QTRY_COMPARE(theme.radius(), 0);
         touch(response, "{\"int\":6}");
+        theme.refreshRounding();
         QTRY_COMPARE(theme.radius(), 6);
     }
 

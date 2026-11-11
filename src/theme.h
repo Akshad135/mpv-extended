@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QLocalSocket>
 #include <QObject>
 #include <QProcess>
 #include <QTimer>
@@ -59,13 +60,16 @@ public:
     // leave out (they only define background, foreground, and accent).
     static QHash<QString, QColor> readPalette(const QString &path, bool *light = nullptr);
 
+    // Asks Hyprland for its rounding again. Runs at start, when Hyprland
+    // reloads its config, and when the window comes back into focus.
+    void refreshRounding();
+
 signals:
     void changed();
 
 private:
     QColor color(const QString &name) const { return m_palette.value(name); }
     void reload();
-    void refreshRounding();
 
     QString m_directory;
     QHash<QString, QColor> m_palette;
@@ -75,5 +79,7 @@ private:
     QString m_hyprctl;
     int m_radius = 0;
     QProcess m_roundingProcess;
-    QTimer m_roundingPoll, m_roundingTimeout;
+    QTimer m_roundingTimeout;
+    QLocalSocket m_hyprEvents;
+    QByteArray m_hyprEventBuffer;
 };

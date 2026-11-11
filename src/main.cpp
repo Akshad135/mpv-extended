@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("reel");
     app.setApplicationDisplayName("Reel");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(QStringLiteral(APP_VERSION));
 
     const QStringList args = app.arguments().mid(1);
     if (args.contains("--help") || args.contains("-h")) {
@@ -86,7 +86,8 @@ int main(int argc, char *argv[]) {
         return 1;
     inhibitor.setWindow(qobject_cast<QWindow *>(engine.rootObjects().first()));
 
-    // Development aid: REEL_GRAB=out.png saves the window after REEL_GRAB_AFTER
+#ifdef REEL_DEV
+    // Development aid, only in `bin/build CONFIG+=dev` builds: REEL_GRAB=out.png saves the window after REEL_GRAB_AFTER
     // milliseconds (and after evaluating REEL_GRAB_EVAL in the window's QML
     // scope, to set up a state), then quits. It lets the interface be checked
     // without anyone watching the screen.
@@ -112,6 +113,7 @@ int main(int argc, char *argv[]) {
             QGuiApplication::quit();
         });
     }
+#endif
 
     return app.exec();
 }
