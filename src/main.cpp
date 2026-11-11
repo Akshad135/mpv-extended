@@ -84,6 +84,7 @@ int main(int argc, char *argv[]) {
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
+    inhibitor.setWindow(qobject_cast<QWindow *>(engine.rootObjects().first()));
 
     // Development aid: REEL_GRAB=out.png saves the window after REEL_GRAB_AFTER
     // milliseconds (and after evaluating REEL_GRAB_EVAL in the window's QML

@@ -12,6 +12,7 @@ void Inhibitor::setActive(bool active) {
         return;
     m_active = active;
     emit activeChanged();
+    m_wayland.setInhibited(active);
 
     if (!active) {
         release();
