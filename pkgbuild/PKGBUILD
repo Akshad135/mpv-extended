@@ -12,7 +12,7 @@ optdepends=('yt-dlp: play links from YouTube and other sites'
             'xdg-desktop-portal-gtk: file picker on Hyprland and other wlroots desktops')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Filled in at release time with updpkgsums, once the v$pkgver tag exists.
-sha256sums=('SKIP')
+sha256sums=('3b918eaefc648384883d4fea5ea3b0d3d35e11f34c7ffc07ef43adda9182a713')
 
 build() {
   cd "$pkgname-$pkgver"

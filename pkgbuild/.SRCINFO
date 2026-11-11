@@ -1,0 +1,23 @@
+pkgbase = mpv-extended
+	pkgdesc = A video player for Omarchy, built on libmpv
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/akshad135/mpv-extended
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = wayland-protocols
+	depends = qt6-base
+	depends = qt6-declarative
+	depends = mpv
+	depends = ffmpeg
+	depends = wayland
+	depends = libglvnd
+	depends = xdg-desktop-portal
+	depends = hicolor-icon-theme
+	optdepends = yt-dlp: play links from YouTube and other sites
+	optdepends = xdg-desktop-portal-gtk: file picker on Hyprland and other wlroots desktops
+	source = mpv-extended-0.1.0.tar.gz::https://github.com/akshad135/mpv-extended/archive/refs/tags/v0.1.0.tar.gz
+	sha256sums = 3b918eaefc648384883d4fea5ea3b0d3d35e11f34c7ffc07ef43adda9182a713
+
+pkgname = mpv-extended
