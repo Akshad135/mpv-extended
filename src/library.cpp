@@ -402,7 +402,8 @@ QStringList Library::readPlaylistFile(const QString &path) {
         if (line.isEmpty())
             continue;
         if (line.startsWith("file:", Qt::CaseInsensitive)) {
-            files.append(QUrl(line).toLocalFile());
+            // "file:track.mp3" is relative to the playlist, like a plain path.
+            files.append(QDir::cleanPath(base.absoluteFilePath(QUrl(line).toLocalFile())));
         } else if (link.match(line).hasMatch()) {
             files.append(line); // mpv opens links itself
         } else {

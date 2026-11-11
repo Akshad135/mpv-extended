@@ -27,6 +27,8 @@ FocusScope {
         for (let i = 0; i < files.count; ++i) out.push(files.get(i).path)
         return out
     }
+    // What the rows show, to tell whether anything changed.
+    function shown(entries) { return JSON.stringify(entries.map(e => [e.path, e.finished, e.duration, e.available])) }
     function reload() {
         const entries = playlists.entries(playlistId)
         files.clear()
@@ -79,9 +81,9 @@ FocusScope {
         selection = Math.min(selection, files.count - 1)
         commit()
     }
-    function play(path) {
+    function play(path, row) {
         saveName()
-        app.openPlaylist(playlistId, path || "")
+        app.openPlaylist(playlistId, path || "", row === undefined ? -1 : row)
     }
     function renameNow() { nameField.forceActiveFocus(); nameField.selectAll() }
     // Keys go to the list's handler, not the name. (Focusing the scope
@@ -117,7 +119,10 @@ FocusScope {
         function onChanged() {
             if (editor.dragging || editor.committing || !editor.playlistId) return
             if (!editor.info.id) { editor.closed(); return } // removed elsewhere
-            if (editor.paths().join("\n") !== playlists.entries(editor.playlistId).map(e => e.path).join("\n"))
+            // New order, or new watch state from the history.
+            const rows = []
+            for (let i = 0; i < files.count; ++i) rows.push(files.get(i))
+            if (editor.shown(rows) !== editor.shown(playlists.entries(editor.playlistId)))
                 editor.reload()
         }
     }
@@ -137,7 +142,7 @@ FocusScope {
             }
         } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && selection >= 0) {
             event.accepted = true
-            if (!event.isAutoRepeat) play(files.get(selection).path)
+            if (!event.isAutoRepeat) play(files.get(selection).path, selection)
         } else if (event.key === Qt.Key_Delete && selection >= 0) {
             event.accepted = true
             if (!event.isAutoRepeat) removeRow(selection)
@@ -336,7 +341,7 @@ FocusScope {
                     anchors.fill: parent
                     hoverEnabled: true
                     onClicked: { editor.selection = slot.index; editor.takeKeys() }
-                    onDoubleClicked: editor.play(slot.path)
+                    onDoubleClicked: editor.play(slot.path, slot.index)
                 }
 
                 // The grip: press and drag to move the row.
@@ -399,7 +404,7 @@ FocusScope {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: editor.play(slot.path)
+                        onClicked: editor.play(slot.path, slot.index)
                     }
                     ToolTip.visible: playHere.containsMouse
                     ToolTip.text: qsTr("Play from here")

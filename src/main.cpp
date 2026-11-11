@@ -39,9 +39,11 @@ int main(int argc, char *argv[]) {
     // package builds too.
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
-            std::fputs("Usage: mpv-extended [file|folder|url ...]\n\n"
+            std::fputs("Usage: mpv-extended [file|folder|playlist|url ...]\n\n"
                        "Plays video and audio. A folder plays everything in it; a single file\n"
-                       "plays with the other files beside it queued up next.\n", stdout);
+                       "plays with the other files beside it queued up next. A folder or a\n"
+                       "playlist file (.m3u, .m3u8, .pls) is also kept in the library as a\n"
+                       "playlist.\n", stdout);
             return 0;
         }
         if (std::strcmp(argv[i], "--version") == 0) {

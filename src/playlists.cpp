@@ -224,28 +224,35 @@ void Playlists::refresh() {
     emit changed();
 }
 
-QVariantMap Playlists::open(const QString &id, const QString &startAt) {
+QVariantMap Playlists::open(const QString &id, const QString &startAt, int near) {
+    const QVariantMap none{{"files", QStringList()}, {"index", 0}};
     const auto it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const Item &i) { return i.id == id; });
-    if (it == m_items.cend())
-        return {{"files", QStringList()}, {"index", 0}};
-    QStringList files = it->files;
-    if (it->kind == "folder") {
-        if (!QFileInfo(it->source).isDir())
-            return {{"files", QStringList()}, {"index", 0}};
-        files = Library::mediaIn(it->source);
-    } else if (it->kind == "file" && QFileInfo(it->source).isFile()) {
-        files = Library::readPlaylistFile(it->source);
-    }
+    if (it == m_items.cend() || (it->kind == "folder" && !QFileInfo(it->source).isDir()))
+        return none;
+    // The files come from what's on disk, read under the lock: another
+    // window's edits since this one last read must survive the open.
+    QStringList files;
+    bool found = false;
     change([&](QList<Item> &items) {
-        for (auto &item : items)
-            if (item.id == id) {
-                item.files = files.mid(0, filesPerPlaylist);
-                item.lastOpened = QDateTime::currentMSecsSinceEpoch();
-            }
+        for (auto &item : items) {
+            if (item.id != id)
+                continue;
+            found = true;
+            if (item.kind == "folder" && QFileInfo(item.source).isDir())
+                item.files = Library::mediaIn(item.source).mid(0, filesPerPlaylist);
+            else if (item.kind == "file" && QFileInfo(item.source).isFile())
+                item.files = Library::readPlaylistFile(item.source).mid(0, filesPerPlaylist);
+            item.lastOpened = QDateTime::currentMSecsSinceEpoch();
+            files = item.files;
+        }
     });
-    const int chosen = startAt.isEmpty() ? -1 : int(files.indexOf(startAt));
-    const int index = chosen >= 0 ? chosen : startIndex(files, m_library);
-    return {{"files", files}, {"index", index}};
+    if (!found)
+        return none;
+    // A file listed twice plays from the copy that was picked.
+    int chosen = near >= 0 && near < files.size() && files[near] == startAt ? near : -1;
+    if (chosen < 0 && !startAt.isEmpty())
+        chosen = int(files.indexOf(startAt));
+    return {{"files", files}, {"index", chosen >= 0 ? chosen : startIndex(files, m_library)}};
 }
 
 int Playlists::startIndex(const QStringList &files, const Library *library) {

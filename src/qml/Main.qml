@@ -30,6 +30,8 @@ ApplicationWindow {
     readonly property bool dropActive: drop.containsDrag
     property bool helpVisible: false
     // Player keys rest while the shortcut sheet is up.
+    // With a playlist open in the library, opening adds to it instead.
+    readonly property bool editingPlaylist: !inPlayer && home.editingId !== ""
     readonly property bool playerKeys: inPlayer && !helpVisible && !saveDialog.opened
     // Also when mpv stops by itself (a link that fails, a stream that ends):
     // the menus are popups above everything and would float over the library.
@@ -59,8 +61,8 @@ ApplicationWindow {
         }
         play(result)
     }
-    function openPlaylist(id, startAt) {
-        const result = playlists.open(id, startAt || "")
+    function openPlaylist(id, startAt, near) {
+        const result = playlists.open(id, startAt || "", near === undefined ? -1 : near)
         if (result.files.length === 0) {
             const info = playlists.find(id)
             showError(info.available && info.count === 0 ? qsTr("That playlist is empty. Add files to it first.")
@@ -425,8 +427,8 @@ ApplicationWindow {
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.handleEscape() }
     Shortcut { enabled: !saveDialog.opened; sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
     Shortcut { enabled: !saveDialog.opened; sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
-    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
-    Shortcut { enabled: !saveDialog.opened; sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
+    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles(win.editingPlaylist ? "playlist" : "media") }
+    Shortcut { enabled: !saveDialog.opened; sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder(win.editingPlaylist ? "playlist" : "media") }
     Shortcut { enabled: !saveDialog.opened && !win.inPlayer; sequence: "Ctrl+N"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: home.newPlaylist() }
     Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
 

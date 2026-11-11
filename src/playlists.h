@@ -50,10 +50,10 @@ public:
     // Its files, each with what the history knows: {path, title, folder,
     // duration, finished, available}.
     Q_INVOKABLE QVariantList entries(const QString &id) const;
-    // What to play: {files, index}, starting at the given file, else where
-    // the history says to. A folder is scanned again first. Empty files if
-    // it's gone or empty.
-    Q_INVOKABLE QVariantMap open(const QString &id, const QString &startAt = {});
+    // What to play: {files, index}, starting at the given file (the one at
+    // `near` if it's listed twice), else where the history says to. A
+    // folder is scanned again first. Empty files if it's gone or empty.
+    Q_INVOKABLE QVariantMap open(const QString &id, const QString &startAt = {}, int near = -1);
     // Where to pick these files up, from the watch history.
     Q_INVOKABLE int startAt(const QStringList &files) const { return startIndex(files, m_library); }
     // Reads the file again, for changes made in another window.

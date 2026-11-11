@@ -1,5 +1,6 @@
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -284,11 +285,11 @@ private slots:
         // A colon doesn't make a link; Windows backslashes and Latin-1 work.
         QFile old(dir.filePath("old.m3u"));
         QVERIFY(old.open(QIODevice::WriteOnly));
-        old.write("Ep1:Pilot.mkv\nMusic\\Artist\\a.mp3\nCaf\xE9.mkv\n");
+        old.write("Ep1:Pilot.mkv\nMusic\\Artist\\a.mp3\nCaf\xE9.mkv\nfile:track.mp3\n");
         old.close();
         QCOMPARE(Library::readPlaylistFile(old.fileName()),
                  (QStringList{dir.filePath("Ep1:Pilot.mkv"), dir.filePath("Music/Artist/a.mp3"),
-                              dir.filePath(QString::fromUtf8("Caf\xC3\xA9.mkv"))}));
+                              dir.filePath(QString::fromUtf8("Caf\xC3\xA9.mkv")), dir.filePath("track.mp3")}));
 
         QFile pls(dir.filePath("radio.pls"));
         QVERIFY(pls.open(QIODevice::WriteOnly));
@@ -359,6 +360,24 @@ private slots:
         QVERIFY(QDir(media.path()).removeRecursively());
         QVERIFY(first.open(id).value("files").toStringList().isEmpty());
         QVERIFY(!first.all().first().toMap().value("available").toBool());
+    }
+
+    void openingKeepsAnotherWindowsEdits()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        Playlists first(&library, data.path()), second(&library, data.path());
+        const QString id = first.save("Mix", {"/m/a.mkv", "/m/b.mkv"});
+        second.refresh();
+        QVERIFY(!second.setFiles(id, {"/m/a.mkv", "/m/b.mkv", "/m/a.mkv", "/m/d.mkv"}).isEmpty());
+        // The first window still holds two files, and opens the playlist.
+        const QVariantMap opened = first.open(id);
+        QCOMPARE(opened.value("files").toStringList().size(), 4);
+        second.refresh();
+        QCOMPARE(second.find(id).value("count").toInt(), 4);
+        // A file listed twice plays from the copy that was picked.
+        QCOMPARE(first.open(id, "/m/a.mkv", 2).value("index").toInt(), 2);
+        QCOMPARE(first.open(id, "/m/a.mkv").value("index").toInt(), 0);
     }
 
     void savedPlaylistsOutlastTheCap()
@@ -673,7 +692,22 @@ private slots:
             return true;
         };
         QTRY_VERIFY_WITH_TIMEOUT(all(), 30000);
-        QCOMPARE(QDir(dir.filePath("frames")).entryList({"*/*.part.jpg"}).size(), 0);
+
+        // Grabs called off midway (another file opened) leave no partial
+        // frames behind once their ffmpeg exits.
+        const QString longer = dir.filePath("longer.mkv");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=10",
+                                            "-t", "60", longer}), 0);
+        thumbnailer.prepare(longer, 60);
+        QTest::qWait(50);
+        thumbnailer.prepare("", 0);
+        auto partials = [&] {
+            int n = 0;
+            QDirIterator it(dir.filePath("frames"), {"*.part.jpg"}, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) { it.next(); ++n; }
+            return n;
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(partials(), 0, 10000);
     }
 
     void themeFallsBack()
