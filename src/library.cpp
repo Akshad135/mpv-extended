@@ -488,6 +488,21 @@ QVariantMap Library::expand(const QStringList &inputs) const {
     return result;
 }
 
+QStringList Library::collect(const QStringList &inputs) const {
+    QStringList files;
+    for (const auto &input : inputs) {
+        const QString path = localPath(input);
+        const QFileInfo info(path);
+        if (info.isDir())
+            files += mediaIn(path);
+        else if (info.isFile() && isPlaylistFile(path))
+            files += readPlaylistFile(path);
+        else if (!path.isEmpty())
+            files.append(path);
+    }
+    return files;
+}
+
 QString Library::clipboardText() const {
     return QGuiApplication::clipboard()->text().trimmed();
 }

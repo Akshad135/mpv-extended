@@ -12,6 +12,19 @@ FocusScope {
     readonly property int total: playlistList.length + continueList.length + recentList.length
     readonly property bool empty: total === 0
     property int selection: -1
+    // The playlist open in the editor, if any.
+    property string editingId: ""
+
+    function editPlaylist(id) { editingId = id; editor.forceActiveFocus() }
+    function newPlaylist() {
+        const id = playlists.save(qsTr("New playlist"))
+        if (!id) { app.showError(qsTr("Couldn't save the playlist.")); return }
+        editPlaylist(id)
+        editor.renameNow()
+    }
+    function closeEditor() { editingId = ""; home.forceActiveFocus() }
+    function addToEditor(urls) { editor.add(urls) }
+    function escapeEditor() { editor.leave() }
 
     // The selection runs through the sections in order: two rows of cards,
     // then the list.
@@ -88,7 +101,7 @@ FocusScope {
     onTotalChanged: if (selection >= total) selection = total - 1
 
     Keys.onPressed: (event) => {
-        if (app.helpVisible) return
+        if (app.helpVisible || editingId) return
         if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
             move(event.key); event.accepted = true
         } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && selection >= 0) {
@@ -210,10 +223,9 @@ FocusScope {
             spacing: 14
             topPadding: 8
 
-            SectionTitle { visible: home.playlistList.length > 0; text: qsTr("Playlists") }
+            SectionTitle { text: qsTr("Playlists") }
             ListView {
                 id: playlistRow
-                visible: home.playlistList.length > 0
                 width: parent.width
                 height: 246
                 orientation: ListView.Horizontal
@@ -230,11 +242,35 @@ FocusScope {
                     selected: home.selection === index
                     y: 4
                     onActivated: home.open(index)
+                    onEditRequested: home.editPlaylist(modelData.id)
                     onRemoveRequested: playlists.forget(modelData.id)
+                }
+                // Always last in the row: a new, empty playlist to fill.
+                footer: Item {
+                    width: newTile.width + (home.playlistList.length ? 18 : 0)
+                    height: newTile.height + 4
+                    Rectangle {
+                        id: newTile
+                        x: home.playlistList.length ? 18 : 0
+                        y: 10
+                        width: 180
+                        height: Math.round(296 * 9 / 16)
+                        radius: theme.radius
+                        color: newArea.containsMouse ? theme.alpha(theme.accent, 0.08) : "transparent"
+                        border.color: newArea.containsMouse ? theme.accent : theme.alpha(theme.foreground, 0.15)
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Glyph { anchors.horizontalCenter: parent.horizontalCenter; width: 28; height: 28; name: "plus"; color: theme.accent }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: qsTr("New playlist"); color: theme.strong; font.pixelSize: 13; font.weight: Font.DemiBold }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: KeyNames.label("Ctrl+N"); color: theme.dim; font.pixelSize: 11 }
+                        }
+                        MouseArea { id: newArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: home.newPlaylist() }
+                    }
                 }
             }
 
-            SectionTitle { visible: home.continueList.length > 0; text: qsTr("Continue watching"); topPadding: home.playlistList.length > 0 ? 10 : 0 }
+            SectionTitle { visible: home.continueList.length > 0; text: qsTr("Continue watching"); topPadding: 10 }
             ListView {
                 id: continueRow
                 visible: home.continueList.length > 0
@@ -276,6 +312,16 @@ FocusScope {
                 }
             }
         }
+    }
+
+    PlaylistEditor {
+        id: editor
+        anchors.fill: parent
+        app: home.app
+        playlistId: home.editingId
+        visible: home.editingId !== ""
+        focus: visible
+        onClosed: home.closeEditor()
     }
 
     component SectionTitle: Text {

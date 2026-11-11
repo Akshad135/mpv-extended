@@ -13,6 +13,7 @@
 #include <QRandomGenerator>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QUrl>
 #include <algorithm>
 
 namespace {
@@ -135,8 +136,6 @@ QString Playlists::remember(const QVariantMap &collection, const QStringList &fi
 }
 
 QString Playlists::save(const QString &name, const QStringList &files) {
-    if (files.isEmpty())
-        return {};
     const QString id = QString("saved:%1-%2")
                            .arg(QDateTime::currentMSecsSinceEpoch())
                            .arg(QRandomGenerator::global()->generate(), 8, 16, QChar('0'));
@@ -146,6 +145,69 @@ QString Playlists::save(const QString &name, const QStringList &files) {
                           files.mid(0, filesPerPlaylist), QDateTime::currentMSecsSinceEpoch()});
     });
     return ok ? id : QString();
+}
+
+void Playlists::rename(const QString &id, const QString &name) {
+    const QString trimmed = name.simplified();
+    if (trimmed.isEmpty())
+        return;
+    change([&](QList<Item> &items) {
+        for (auto &item : items)
+            if (item.id == id)
+                item.name = trimmed;
+    });
+}
+
+QString Playlists::setFiles(const QString &id, const QStringList &files) {
+    QString result;
+    const bool ok = change([&](QList<Item> &items) {
+        for (auto &item : items) {
+            if (item.id != id)
+                continue;
+            if (item.kind != "saved") {
+                // Its own list from now on: opening the folder again makes
+                // a fresh folder playlist instead of undoing these edits.
+                item.kind = "saved";
+                item.source.clear();
+                item.id = QString("saved:%1-%2")
+                              .arg(QDateTime::currentMSecsSinceEpoch())
+                              .arg(QRandomGenerator::global()->generate(), 8, 16, QChar('0'));
+            }
+            item.files = files.mid(0, filesPerPlaylist);
+            result = item.id;
+        }
+    });
+    return ok ? result : QString();
+}
+
+QVariantMap Playlists::find(const QString &id) const {
+    for (const auto &item : m_items)
+        if (item.id == id)
+            return toVariant(item);
+    return {};
+}
+
+QVariantList Playlists::entries(const QString &id) const {
+    QVariantList out;
+    for (const auto &item : m_items) {
+        if (item.id != id)
+            continue;
+        Library::Entry entry;
+        for (const auto &file : item.files) {
+            const bool link = file.contains("://");
+            const QFileInfo info(file);
+            const bool played = m_library && m_library->lookup(file, &entry);
+            out.append(QVariantMap{
+                {"path", file},
+                {"title", link ? (played && !entry.title.isEmpty() ? entry.title : file) : info.completeBaseName()},
+                {"folder", link ? QUrl(file).host() : info.dir().dirName()},
+                {"duration", played ? entry.duration : 0.0},
+                {"finished", played && entry.finished},
+                {"available", link || info.exists()},
+            });
+        }
+    }
+    return out;
 }
 
 void Playlists::forget(const QString &id) {
@@ -162,7 +224,7 @@ void Playlists::refresh() {
     emit changed();
 }
 
-QVariantMap Playlists::open(const QString &id) {
+QVariantMap Playlists::open(const QString &id, const QString &startAt) {
     const auto it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const Item &i) { return i.id == id; });
     if (it == m_items.cend())
         return {{"files", QStringList()}, {"index", 0}};
@@ -181,7 +243,9 @@ QVariantMap Playlists::open(const QString &id) {
                 item.lastOpened = QDateTime::currentMSecsSinceEpoch();
             }
     });
-    return {{"files", files}, {"index", startIndex(files, m_library)}};
+    const int chosen = startAt.isEmpty() ? -1 : int(files.indexOf(startAt));
+    const int index = chosen >= 0 ? chosen : startIndex(files, m_library);
+    return {{"files", files}, {"index", index}};
 }
 
 int Playlists::startIndex(const QStringList &files, const Library *library) {
@@ -220,7 +284,7 @@ QVariantMap Playlists::toVariant(const Item &item) const {
     });
     const bool available = item.kind == "folder" ? QFileInfo(item.source).isDir()
                          : item.kind == "file"   ? QFileInfo(item.source).isFile()
-                                                 : !item.files.isEmpty();
+                                                 : true;
     return {
         {"id", item.id},
         {"name", item.name},

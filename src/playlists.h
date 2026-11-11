@@ -36,13 +36,24 @@ public:
     // Library::expand) with its files, and returns its id (empty if it
     // couldn't be saved).
     Q_INVOKABLE QString remember(const QVariantMap &collection, const QStringList &files);
-    // Keeps a queue under a name, and returns its id (empty if it couldn't
-    // be saved).
-    Q_INVOKABLE QString save(const QString &name, const QStringList &files);
+    // Keeps a list under a name (a saved queue, or a new empty playlist),
+    // and returns its id (empty if it couldn't be saved).
+    Q_INVOKABLE QString save(const QString &name, const QStringList &files = {});
     Q_INVOKABLE void forget(const QString &id);
-    // What to play: {files, index}, starting where the history says to. A
-    // folder is scanned again first. Empty files if it's gone.
-    Q_INVOKABLE QVariantMap open(const QString &id);
+    Q_INVOKABLE void rename(const QString &id, const QString &name);
+    // Replaces the files (added, removed, reordered). A folder or playlist
+    // file that's edited becomes a list of its own: it stops following the
+    // folder, and gets a new id, which is returned (empty on failure).
+    Q_INVOKABLE QString setFiles(const QString &id, const QStringList &files);
+    // One playlist as the library shows it, or empty if there's none.
+    Q_INVOKABLE QVariantMap find(const QString &id) const;
+    // Its files, each with what the history knows: {path, title, folder,
+    // duration, finished, available}.
+    Q_INVOKABLE QVariantList entries(const QString &id) const;
+    // What to play: {files, index}, starting at the given file, else where
+    // the history says to. A folder is scanned again first. Empty files if
+    // it's gone or empty.
+    Q_INVOKABLE QVariantMap open(const QString &id, const QString &startAt = {});
     // Where to pick these files up, from the watch history.
     Q_INVOKABLE int startAt(const QStringList &files) const { return startIndex(files, m_library); }
     // Reads the file again, for changes made in another window.

@@ -63,12 +63,13 @@ FilePicker::FilePicker(QObject *parent) : QObject(parent) {
     qDBusRegisterMetaType<QList<Filter>>();
 }
 
-void FilePicker::openFiles() {
-    request(tr("Open Media"), "media", false, true, MediaFilters);
+void FilePicker::openFiles(const QString &purpose) {
+    request(purpose == "playlist" ? tr("Add to Playlist") : tr("Open Media"), purpose, false, true, MediaFilters);
 }
 
-void FilePicker::openFolder() {
-    request(tr("Open Folder"), "media", true, false, NoFilters);
+void FilePicker::openFolder(const QString &purpose) {
+    request(purpose == "playlist" ? tr("Add a Folder to the Playlist") : tr("Open Folder"), purpose, true, false,
+            NoFilters);
 }
 
 void FilePicker::openSubtitle() {

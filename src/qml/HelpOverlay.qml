@@ -46,6 +46,8 @@ Rectangle {
             ["Ctrl+V", qsTr("Open a copied link or path")],
             ["Arrows  Enter", qsTr("Pick and play")],
             ["Delete", qsTr("Remove from the library")],
+            ["Ctrl+N", qsTr("New playlist")],
+            ["Ctrl+↑ ↓", qsTr("Move a file in a playlist")],
             ["?", qsTr("Show these shortcuts")],
             ["Q", qsTr("Quit")],
         ]},

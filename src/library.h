@@ -47,6 +47,9 @@ public:
     // when one folder or one playlist file was opened: those are kept as
     // playlists in the library.
     Q_INVOKABLE QVariantMap expand(const QStringList &inputs) const;
+    // Files to add to a playlist: folders and playlist files are opened up,
+    // and anything else is taken as it is (one file stays one file).
+    Q_INVOKABLE QStringList collect(const QStringList &inputs) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE QString frameCaptureFile(const QString &title, double position) const;
     // Where captures go; ~/Pictures/mpv-extended unless set (tests set it).

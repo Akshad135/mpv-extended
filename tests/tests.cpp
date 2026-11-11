@@ -4,6 +4,11 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QProcess>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -368,6 +373,111 @@ private slots:
         const QVariantList all = playlists.all();
         QCOMPARE(all.size(), 100);
         QVERIFY(std::any_of(all.cbegin(), all.cend(), [&](const QVariant &v) { return v.toMap().value("id") == saved; }));
+    }
+
+    void playlistEditorReorders()
+    {
+        QTemporaryDir data, cache, theme;
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QString id = playlists.save("Mix", {"/m/a.mkv", "/m/b.mkv", "/m/c.mkv", "/m/d.mkv"});
+        Theme colors(theme.path());
+        QObject picker;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &colors);
+        engine.rootContext()->setContextProperty("library", &library);
+        engine.rootContext()->setContextProperty("playlists", &playlists);
+        engine.rootContext()->setContextProperty("picker", &picker);
+        QQmlComponent component(&engine);
+        component.setData(QString("import QtQuick\n"
+                                  "Item {\n"
+                                  "    width: 900; height: 600\n"
+                                  "    property var played: []\n"
+                                  "    property alias editor: editor\n"
+                                  "    QtObject { id: app\n"
+                                  "        function showError(text) {}\n"
+                                  "        function toast(icon, text) {}\n"
+                                  "        function openPlaylist(id, path) { played = played.concat([path]) } }\n"
+                                  "    PlaylistEditor { id: editor; anchors.fill: parent; app: app; playlistId: \"%1\" }\n"
+                                  "}\n").arg(id).toUtf8(),
+                          QUrl("qrc:/editor-test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(900, 600);
+        qobject_cast<QQuickItem *>(root.get())->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto order = [&] {
+            QStringList names;
+            for (const auto &entry : playlists.entries(playlists.all().first().toMap().value("id").toString()))
+                names.append(QFileInfo(entry.toMap().value("path").toString()).baseName());
+            return names.join("");
+        };
+
+        // Dragging the first row's grip down two rows.
+        // Delegates hang off the visual tree, not the object tree.
+        std::function<QQuickItem *(QQuickItem *, const QString &)> find = [&](QQuickItem *item, const QString &name) {
+            if (item->objectName() == name)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, name))
+                    return found;
+            return static_cast<QQuickItem *>(nullptr);
+        };
+        QQuickItem *grip = nullptr;
+        QTRY_VERIFY((grip = find(window.contentItem(), "grip0")));
+        const QPoint start = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2)).toPoint();
+        QTest::mousePress(&window, Qt::LeftButton, {}, start);
+        for (int dy = 4; dy <= 54 * 2 + 10; dy += 4) {
+            QTest::mouseMove(&window, start + QPoint(0, dy));
+            QTest::qWait(5);
+        }
+        QTest::mouseRelease(&window, Qt::LeftButton, {}, start + QPoint(0, 54 * 2 + 10));
+        QTRY_COMPARE(order(), QString("bcad"));
+
+        // Keys: Ctrl+Down moves the selected file, Delete removes it.
+        QQuickItem *editor = root->property("editor").value<QQuickItem *>();
+        editor->forceActiveFocus();
+        editor->setProperty("selection", 0);
+        QTest::keyClick(&window, Qt::Key_Down, Qt::ControlModifier);
+        QCOMPARE(order(), QString("cbad"));
+        QCOMPARE(editor->property("selection").toInt(), 1);
+        QTest::keyClick(&window, Qt::Key_Delete);
+        QCOMPARE(order(), QString("cad"));
+        // Enter plays from the selected file.
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(root->property("played").toStringList(), QStringList{"/m/a.mkv"});
+    }
+
+    void editingAFolderPlaylistMakesItsOwnList()
+    {
+        QTemporaryDir data, cache, media;
+        touch(media.filePath("e1.mkv"));
+        touch(media.filePath("e2.mkv"));
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QVariantMap folder = library.expand({media.path()});
+        const QString id = playlists.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        playlists.rename(id, "My show");
+        QCOMPARE(playlists.find(id).value("name").toString(), QString("My show"));
+        // Reordered: no longer follows the folder, under a new id.
+        const QString own = playlists.setFiles(id, {media.filePath("e2.mkv"), media.filePath("e1.mkv")});
+        QVERIFY(!own.isEmpty() && own != id);
+        QCOMPARE(playlists.find(own).value("kind").toString(), QString("saved"));
+        QVERIFY(playlists.find(id).isEmpty());
+        touch(media.filePath("e3.mkv"));
+        QCOMPARE(playlists.open(own).value("files").toStringList().size(), 2);
+        // Opening the folder again makes a fresh folder playlist beside it.
+        const QVariantMap again = library.expand({media.path()});
+        playlists.remember(again.value("collection").toMap(), again.value("files").toStringList());
+        QCOMPARE(playlists.all().size(), 2);
+        // Playing from a chosen file, and an empty new playlist.
+        QCOMPARE(playlists.open(own, media.filePath("e1.mkv")).value("index").toInt(), 1);
+        const QString empty = playlists.save("Later");
+        QVERIFY(!empty.isEmpty());
+        QVERIFY(playlists.open(empty).value("files").toStringList().isEmpty());
+        QCOMPARE(library.collect({media.filePath("e1.mkv")}), QStringList{media.filePath("e1.mkv")});
     }
 
     void linksPassThrough()

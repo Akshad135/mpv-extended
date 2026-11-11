@@ -16,7 +16,10 @@ It is an independent project built on libmpv, not part of mpv.
 - **Playlists.** Open a folder, or an .m3u, .m3u8, or .pls file, and it stays
   in the library as a playlist that picks up after the last file you
   watched. A folder is scanned again each time, so new episodes show up. Any
-  queue can be saved as a playlist from the queue panel.
+  queue can be saved as a playlist from the queue panel, and a new one made
+  with Ctrl+N. In a playlist, rename it, add files or folders (or drop them
+  in), drag files into order (or Ctrl+Up/Down), remove them, and play from
+  any of them.
 - **Timeline previews.** Hover the seek bar to see the frame, the time, and
   the chapter.
 - **Tracks.** Pick audio and subtitle tracks by language, or load a
@@ -49,6 +52,7 @@ It is an independent project built on libmpv, not part of mpv.
 | Ctrl+S | Save the frame to ~/Pictures/mpv-extended |
 | Ctrl+O / Ctrl+Shift+O / Ctrl+V | Open files / a folder / a copied link |
 | Arrows, Enter, Delete | In the library: pick, play, remove |
+| Ctrl+N | New playlist |
 | Esc | Close, leave fullscreen, or go to the library |
 | ? | All shortcuts |
 | Q | Quit |

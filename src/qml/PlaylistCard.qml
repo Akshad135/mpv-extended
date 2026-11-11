@@ -8,6 +8,7 @@ Item {
     property bool selected: false
     signal activated()
     signal removeRequested()
+    signal editRequested()
 
     width: 296
     height: thumb.y + thumb.height + 62
@@ -69,6 +70,7 @@ Item {
             anchors.right: parent.right
             anchors.bottom: progressTrack.top
             anchors.margins: 8
+            visible: card.entry.count > 0
             width: count.implicitWidth + 12
             height: 20
             radius: Math.min(4, theme.radius)
@@ -124,6 +126,7 @@ Item {
         Text {
             width: parent.width
             text: !card.entry.available ? (card.entry.kind === "folder" ? qsTr("Folder is missing") : qsTr("Playlist file is missing"))
+                : card.entry.count === 0 ? qsTr("Empty: add files to it")
                 : card.entry.started ? qsTr("Next: %1").arg(card.entry.nextTitle)
                 : qsTr("%n files", "", card.entry.count)
             color: card.entry.available ? theme.dim : theme.red
@@ -141,6 +144,7 @@ Item {
     }
 
     IconButton {
+        id: removeButton
         anchors.right: parent.right
         anchors.top: thumb.top
         anchors.margins: 6
@@ -151,5 +155,18 @@ Item {
         property bool hovered: false
         HoverHandler { onHoveredChanged: parent.hovered = hovered }
         onClicked: card.removeRequested()
+    }
+
+    IconButton {
+        anchors.right: removeButton.left
+        anchors.top: thumb.top
+        anchors.margins: 6
+        size: 28
+        icon: "edit"
+        tip: qsTr("Edit the playlist")
+        visible: area.containsMouse || hovered || removeButton.visible
+        property bool hovered: false
+        HoverHandler { onHoveredChanged: parent.hovered = hovered }
+        onClicked: card.editRequested()
     }
 }

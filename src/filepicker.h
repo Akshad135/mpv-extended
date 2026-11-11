@@ -14,8 +14,10 @@ public:
     explicit FilePicker(QObject *parent = nullptr);
 
     bool busy() const { return !m_requestPath.isEmpty(); }
-    Q_INVOKABLE void openFiles();
-    Q_INVOKABLE void openFolder();
+    // The purpose comes back with picked(): "media" plays the files, while
+    // "playlist" adds them to the playlist being edited.
+    Q_INVOKABLE void openFiles(const QString &purpose = QStringLiteral("media"));
+    Q_INVOKABLE void openFolder(const QString &purpose = QStringLiteral("media"));
     Q_INVOKABLE void openSubtitle();
 
 signals:

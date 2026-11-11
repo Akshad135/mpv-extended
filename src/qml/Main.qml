@@ -59,10 +59,12 @@ ApplicationWindow {
         }
         play(result)
     }
-    function openPlaylist(id) {
-        const result = playlists.open(id)
+    function openPlaylist(id, startAt) {
+        const result = playlists.open(id, startAt || "")
         if (result.files.length === 0) {
-            showError(qsTr("That playlist's folder or file is gone."))
+            const info = playlists.find(id)
+            showError(info.available && info.count === 0 ? qsTr("That playlist is empty. Add files to it first.")
+                                                         : qsTr("That playlist's folder or file is gone."))
             return
         }
         play(result)
@@ -206,6 +208,7 @@ ApplicationWindow {
     function handleEscape() {
         if (saveDialog.opened) saveDialog.close()
         else if (helpVisible) helpVisible = false
+        else if (!inPlayer && home.editingId) home.escapeEditor()
         else if (overlay.closeMenus()) {}
         else if (fullscreen) win.showNormal()
         else if (inPlayer) goHome()
@@ -262,6 +265,8 @@ ApplicationWindow {
                     win.toast("subtitles", qsTr("Subtitles loaded"))
                 else
                     win.showError(qsTr("Couldn't load those subtitles."))
+            } else if (purpose === "playlist") {
+                home.addToEditor(urls)
             } else {
                 win.openInputs(urls)
             }
@@ -315,7 +320,10 @@ ApplicationWindow {
         keys: ["text/uri-list"]
         onDropped: (event) => {
             if (event.hasUrls) {
-                win.openInputs(event.urls.map(u => u.toString()))
+                const urls = event.urls.map(u => u.toString())
+                // Onto an open playlist: added to it, not played.
+                if (!win.inPlayer && home.editingId) home.addToEditor(urls)
+                else win.openInputs(urls)
                 event.acceptProposedAction()
             }
         }
@@ -334,7 +342,12 @@ ApplicationWindow {
             anchors.centerIn: parent
             spacing: 12
             Glyph { anchors.horizontalCenter: parent.horizontalCenter; width: 44; height: 44; name: "plus"; color: theme.accent }
-            Text { text: qsTr("Drop to play"); color: theme.strong; font.pixelSize: 18; font.weight: Font.DemiBold }
+            Text {
+                text: !win.inPlayer && home.editingId ? qsTr("Drop to add to the playlist") : qsTr("Drop to play")
+                color: theme.strong
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
         }
     }
 
@@ -414,6 +427,7 @@ ApplicationWindow {
     Shortcut { enabled: !saveDialog.opened; sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
     Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
     Shortcut { enabled: !saveDialog.opened; sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
+    Shortcut { enabled: !saveDialog.opened && !win.inPlayer; sequence: "Ctrl+N"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: home.newPlaylist() }
     Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
 
     Shortcut { enabled: win.playerKeys; sequences: ["Space", "K"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.togglePause() }
