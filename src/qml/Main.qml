@@ -31,7 +31,9 @@ ApplicationWindow {
     property bool helpVisible: false
     // Player keys rest while the shortcut sheet is up.
     readonly property bool playerKeys: inPlayer && !helpVisible
-    onInPlayerChanged: if (!inPlayer) library.refresh()
+    // Also when mpv stops by itself (a link that fails, a stream that ends):
+    // the menus are popups above everything and would float over the library.
+    onInPlayerChanged: if (!inPlayer) { overlay.closeMenus(); library.refresh() }
 
     // Fills %1, %2, ... in one pass, so a file name that contains "%2"
     // stays as it is (chained .arg() would substitute into it).

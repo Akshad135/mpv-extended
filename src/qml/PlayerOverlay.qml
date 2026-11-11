@@ -162,6 +162,9 @@ Item {
             // One notch (120) is 5%; touchpads send many small deltas that
             // add up the same way, and sideways swipes change nothing.
             if (wheel.angleDelta.y === 0) return
+            // A change of direction starts afresh, so the first notch back
+            // isn't spent undoing a half swipe the other way.
+            if (overlay.wheelRemainder * wheel.angleDelta.y < 0) overlay.wheelRemainder = 0
             overlay.wheelRemainder += wheel.angleDelta.y
             const steps = Math.trunc(overlay.wheelRemainder / 120)
             if (steps !== 0) {
