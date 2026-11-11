@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QHash>
-#include <QSet>
 #include <QObject>
 #include <QTimer>
 #include <QVariant>
@@ -60,8 +59,12 @@ signals:
     void changed();
 
 private:
+    // Removed entries, by path, with when they were removed. Saved with the
+    // history so another window can't bring an entry back.
+    using Tombstones = QHash<QString, qint64>;
+
     QVariantMap toVariant(const Entry &entry) const;
-    static QHash<QString, Entry> readEntries(const QString &path, bool *ok);
+    static QHash<QString, Entry> readEntries(const QString &path, Tombstones *forgotten, bool *ok);
     void load();
     void touch();
     void trim();
@@ -69,7 +72,7 @@ private:
     QString m_dataFile;
     QString m_cacheDirectory;
     QHash<QString, Entry> m_entries;
-    QSet<QString> m_forgotten;
+    Tombstones m_forgotten;
     QTimer m_saveTimer;
     bool m_dirty = false;
 };

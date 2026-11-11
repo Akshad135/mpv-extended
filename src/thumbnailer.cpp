@@ -135,6 +135,10 @@ void Thumbnailer::pump() {
         const double at = (index + .5) / m_count * m_duration;
 
         auto *process = new QProcess(this);
+        // A frame that was killed or failed leaves no partial file behind.
+        // QProcess waits for ffmpeg to exit before destroyed() fires, so this
+        // also covers killed runs and the app quitting mid-frame.
+        connect(process, &QObject::destroyed, [partial] { QFile::remove(partial); });
         process->setProgram(m_ffmpeg);
         process->setArguments({"-hide_banner", "-loglevel", "error", "-nostdin", "-ss", QString::number(at, 'f', 2),
                                "-i", m_path, "-frames:v", "1", "-an", "-sn", "-vf", "scale=320:-2", "-q:v", "5",
@@ -151,8 +155,6 @@ void Thumbnailer::pump() {
                     ++m_revision;
                     emit revisionChanged();
                 }
-            } else {
-                QFile::remove(partial);
             }
             pump();
         });

@@ -27,6 +27,8 @@ const QStringList audioExtensions{"mp3", "flac", "ogg", "oga", "opus", "m4a", "a
 
 // Enough history to be useful without the file growing forever.
 constexpr int historyLimit = 300;
+// Long enough to outlive any other window that still holds a removed entry.
+constexpr qint64 tombstoneLifetime = 30LL * 24 * 3600 * 1000;
 
 QString localPath(const QString &input) {
     const QUrl url(input);
@@ -60,8 +62,9 @@ Library::~Library() {
 
 // Reads a history file. *ok is false only when a file exists but can't be
 // read or parsed; a missing file is simply an empty history.
-QHash<QString, Library::Entry> Library::readEntries(const QString &path, bool *ok) {
+QHash<QString, Library::Entry> Library::readEntries(const QString &path, Tombstones *forgotten, bool *ok) {
     QHash<QString, Entry> entries;
+    forgotten->clear();
     *ok = true;
     QFile file(path);
     if (!file.exists())
@@ -91,12 +94,15 @@ QHash<QString, Library::Entry> Library::readEntries(const QString &path, bool *o
         e.finished = o.value("finished").toBool();
         entries.insert(e.path, e);
     }
+    const QJsonObject removed = document.object().value("forgotten").toObject();
+    for (auto it = removed.begin(); it != removed.end(); ++it)
+        forgotten->insert(it.key(), qint64(it.value().toDouble()));
     return entries;
 }
 
 void Library::load() {
     bool ok = true;
-    m_entries = readEntries(m_dataFile, &ok);
+    m_entries = readEntries(m_dataFile, &m_forgotten, &ok);
     if (!ok) {
         // Kept aside rather than overwritten by the next save, so a damaged
         // history can still be recovered by hand.
@@ -115,24 +121,45 @@ void Library::save() {
 
     // Another Reel window may have saved since this one loaded. Merge per
     // file, newest play wins, so neither window erases the other's progress.
+    // A removal wins over any play from before it, whichever window saves
+    // first.
     bool ok = true;
-    const auto onDisk = readEntries(m_dataFile, &ok);
+    Tombstones forgottenOnDisk;
+    const auto onDisk = readEntries(m_dataFile, &forgottenOnDisk, &ok);
     if (ok) {
+        for (auto it = forgottenOnDisk.begin(); it != forgottenOnDisk.end(); ++it)
+            if (it.value() > m_forgotten.value(it.key(), 0))
+                m_forgotten.insert(it.key(), it.value());
         for (auto it = onDisk.begin(); it != onDisk.end(); ++it) {
-            if (m_forgotten.contains(it.key()))
-                continue;
             const auto mine = m_entries.constFind(it.key());
             if (mine == m_entries.constEnd() || mine->lastPlayed < it->lastPlayed)
                 m_entries.insert(it.key(), it.value());
         }
-        trim();
     }
+    const qint64 expired = QDateTime::currentMSecsSinceEpoch() - tombstoneLifetime;
+    bool removed = false;
+    for (auto it = m_forgotten.begin(); it != m_forgotten.end();) {
+        const auto entry = m_entries.find(it.key());
+        if (entry != m_entries.end() && entry->lastPlayed <= it.value()) {
+            QFile::remove(thumbnailFile(entry->path));
+            m_entries.erase(entry);
+            removed = true;
+        }
+        if (it.value() < expired)
+            it = m_forgotten.erase(it);
+        else
+            ++it;
+    }
+    trim();
 
     QJsonArray items;
     for (const auto &e : std::as_const(m_entries))
         items.append(QJsonObject{{"path", e.path}, {"title", e.title}, {"position", e.position},
                                  {"duration", e.duration}, {"lastPlayed", double(e.lastPlayed)},
                                  {"thumbnailStamp", double(e.thumbnailStamp)}, {"finished", e.finished}});
+    QJsonObject forgotten;
+    for (auto it = m_forgotten.cbegin(); it != m_forgotten.cend(); ++it)
+        forgotten.insert(it.key(), double(it.value()));
     QDir().mkpath(QFileInfo(m_dataFile).absolutePath());
     // Written beside the target and renamed over it, so a crash mid-write
     // never leaves a half history behind.
@@ -141,11 +168,14 @@ void Library::save() {
         qWarning("reel: can't write %s", qPrintable(m_dataFile));
         return;
     }
-    file.write(QJsonDocument(QJsonObject{{"version", 1}, {"items", items}}).toJson(QJsonDocument::Compact));
+    file.write(QJsonDocument(QJsonObject{{"version", 1}, {"items", items}, {"forgotten", forgotten}})
+                   .toJson(QJsonDocument::Compact));
     if (file.commit())
         m_dirty = false;
     else
         qWarning("reel: can't save %s", qPrintable(m_dataFile));
+    if (removed)
+        emit changed();
 }
 
 void Library::touch() {
@@ -186,8 +216,9 @@ void Library::update(const QString &path, const QString &title, double position,
         e.duration = duration;
     e.position = std::max(0.0, position);
     e.finished = isFinished(e.position, e.duration);
-    e.lastPlayed = QDateTime::currentMSecsSinceEpoch();
-    m_forgotten.remove(path);
+    // Always after a removal of the same file, even within one millisecond,
+    // so playing it again brings it back.
+    e.lastPlayed = std::max(QDateTime::currentMSecsSinceEpoch(), m_forgotten.value(path, 0) + 1);
     trim();
     // Saved, but the lists aren't rebuilt: the library isn't on screen while
     // something plays, and refresh() updates it on the way back.
@@ -195,10 +226,10 @@ void Library::update(const QString &path, const QString &title, double position,
 }
 
 void Library::forget(const QString &path) {
-    m_forgotten.insert(path);
+    m_forgotten.insert(path, QDateTime::currentMSecsSinceEpoch());
+    touch();
     if (m_entries.remove(path)) {
         QFile::remove(thumbnailFile(path));
-        touch();
         emit changed();
     }
 }

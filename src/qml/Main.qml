@@ -105,22 +105,39 @@ ApplicationWindow {
         grabFrame(then)
     }
 
+    // While a file is being left, the frame wait is still running. Further
+    // N presses move the target instead of starting a second switch, and
+    // nothing switches files once the library is on its way.
+    property int switchTarget: -1
+    property bool goingHome: false
+    readonly property int targetPos: switchTarget >= 0 ? switchTarget : mpv.playlistPos
+
     function goHome() {
+        if (goingHome) return
         if (fullscreen) win.showNormal()
         overlay.closeMenus()
+        goingHome = true
+        switchTarget = -1
         mpv.set("pause", true)
-        leaveFile(() => mpv.stop())
+        leaveFile(() => { goingHome = false; mpv.stop() })
     }
 
     function playAt(index) {
-        if (index < 0 || index >= mpv.playlist.length || index === mpv.playlistPos) return
-        leaveFile(() => mpv.playIndex(index))
+        if (goingHome || index < 0 || index >= mpv.playlist.length) return
+        if (switchTarget >= 0) { switchTarget = index; return }
+        if (index === mpv.playlistPos) return
+        switchTarget = index
+        leaveFile(() => {
+            const target = switchTarget
+            switchTarget = -1
+            if (target >= 0 && target !== mpv.playlistPos) mpv.playIndex(target)
+        })
     }
-    function playNext() { playAt(mpv.playlistPos + 1) }
+    function playNext() { playAt(targetPos + 1) }
     function playPrevious() {
         // Like a CD player: past the first few seconds, back goes to the start.
-        if (mpv.position > 5 || mpv.playlistPos <= 0) { mpv.seek(0, true); return }
-        playAt(mpv.playlistPos - 1)
+        if (switchTarget < 0 && (mpv.position > 5 || mpv.playlistPos <= 0)) { mpv.seek(0, true); return }
+        playAt(targetPos - 1)
     }
 
     function prepareFrames() {
@@ -173,7 +190,8 @@ ApplicationWindow {
             }
         }
         function onVideoOutputFailed() { win.showError(qsTr("Video can't be shown: OpenGL isn't available.")) }
-        function onPausedChanged() { if (mpv.paused) win.saveProgress(true) }
+        // Going home pauses first and saves the frame itself.
+        function onPausedChanged() { if (mpv.paused && !win.goingHome) win.saveProgress(true) }
         function onEofChanged() { if (mpv.eof) win.saveProgress(false) }
         function onFileLoaded() { win.prepareFrames() }
         function onDurationChanged() { win.prepareFrames() }

@@ -1,5 +1,6 @@
 #include <QDir>
 #include <QFile>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -12,6 +13,10 @@ class ReelTests : public QObject {
     Q_OBJECT
 
 private slots:
+    // Nothing here may touch the real history: default paths go to a test
+    // location instead.
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
+
     void formatsTime()
     {
         QCOMPARE(Library::format(0), QString("0:00"));
@@ -88,6 +93,37 @@ private slots:
         Library fresh(data.path(), cache.path());
         QCOMPARE(fresh.resumePosition("/films/x.mkv"), 0.0);
         QCOMPARE(fresh.resumePosition("/films/y.mkv"), 300.0);
+    }
+
+    void forgettingSticksWhicheverWindowSavesFirst()
+    {
+        QTemporaryDir data, cache;
+        {
+            Library seed(data.path(), cache.path());
+            seed.update("/films/x.mkv", "X", 600, 2400);
+        }
+        Library first(data.path(), cache.path());
+        Library second(data.path(), cache.path());
+        second.forget("/films/x.mkv");
+        second.save();
+        first.update("/films/y.mkv", "Y", 300, 2400);
+        first.save(); // still holds x from before the removal
+        QCOMPARE(first.resumePosition("/films/x.mkv"), 0.0);
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/x.mkv"), 0.0);
+        QCOMPARE(fresh.resumePosition("/films/y.mkv"), 300.0);
+    }
+
+    void playingAgainUndoesARemoval()
+    {
+        QTemporaryDir data, cache;
+        Library first(data.path(), cache.path());
+        first.update("/films/x.mkv", "X", 600, 2400);
+        first.forget("/films/x.mkv");
+        first.update("/films/x.mkv", "X", 700, 2400);
+        first.save();
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/x.mkv"), 700.0);
     }
 
     void unreadableHistoryIsKeptAside()
