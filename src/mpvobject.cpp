@@ -213,6 +213,13 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
         {"screenshot-jpeg-quality", "88"},
         {"audio-display", "embedded-first"},
         {"demuxer-max-bytes", "150MiB"},
+        // Rendering happens on Qt's render thread, which also draws every
+        // animation. By default mpv holds that thread until each frame's
+        // display time (up to 50 ms, nearly a whole frame at 24 fps), so the
+        // interface moved at the video's frame rate, unevenly. mpv's manual
+        // suggests 0 for render-API users; measured: 41.7 ms per frame
+        // blocked before, 4.5 ms after, same frames shown.
+        {"video-timing-offset", "0"},
     };
     for (const auto &[name, value] : options)
         mpv_set_option_string(m_mpv, name, value);
