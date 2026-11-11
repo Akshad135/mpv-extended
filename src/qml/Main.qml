@@ -222,7 +222,7 @@ ApplicationWindow {
 
     // Closing only records the position; the library card keeps the frame
     // saved on the last pause or within the last 20 seconds.
-    onClosing: { saveProgress(false); library.save() }
+    onClosing: { saveProgress(false); home.saveEditor(); library.save() }
 
     Component.onCompleted: {
         mpv.set("background-color", theme.deep)

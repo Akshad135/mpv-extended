@@ -450,6 +450,96 @@ private slots:
         QCOMPARE(root->property("played").toStringList(), QStringList{"/m/a.mkv"});
     }
 
+    // The editor page as HomeView uses it: the id comes from outside and
+    // follows moved(). Regressions from review: the page sticking to its
+    // first playlist, focus stuck in the name, a grip click converting a
+    // folder playlist, a lost rename, and the selection after a removal.
+    void playlistEditorFollowsItsPlaylist()
+    {
+        QTemporaryDir data, cache, theme, media;
+        for (const char *name : {"e1.mkv", "e2.mkv", "e3.mkv"})
+            touch(media.filePath(name));
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QVariantMap folder = library.expand({media.path()});
+        const QString show = playlists.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        const QString other = playlists.save("Other", {"/o/x.mkv", "/o/y.mkv", "/o/z.mkv"});
+        Theme colors(theme.path());
+        QObject picker;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &colors);
+        engine.rootContext()->setContextProperty("library", &library);
+        engine.rootContext()->setContextProperty("playlists", &playlists);
+        engine.rootContext()->setContextProperty("picker", &picker);
+        QQmlComponent component(&engine);
+        component.setData(QString("import QtQuick\n"
+                                  "Item {\n"
+                                  "    width: 900; height: 600\n"
+                                  "    property string current: \"%1\"\n"
+                                  "    property alias editor: editor\n"
+                                  "    QtObject { id: app\n"
+                                  "        function showError(text) {}\n"
+                                  "        function toast(icon, text) {}\n"
+                                  "        function openPlaylist(id, path) {} }\n"
+                                  "    PlaylistEditor { id: editor; anchors.fill: parent; app: app; playlistId: current\n"
+                                  "        onMoved: (id) => current = id }\n"
+                                  "}\n").arg(show).toUtf8(),
+                          QUrl("qrc:/editor-test2.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(900, 600);
+        qobject_cast<QQuickItem *>(root.get())->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QQuickItem *editor = root->property("editor").value<QQuickItem *>();
+        std::function<QQuickItem *(QQuickItem *, const QString &)> find = [&](QQuickItem *item, const QString &name) {
+            if (item->objectName() == name)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, name))
+                    return found;
+            return static_cast<QQuickItem *>(nullptr);
+        };
+
+        // A click on a grip, with no drag, leaves the folder playlist alone.
+        QQuickItem *grip = nullptr;
+        QTRY_VERIFY((grip = find(window.contentItem(), "grip0")));
+        QTest::mouseClick(&window, Qt::LeftButton, {}, grip->mapToScene(QPointF(14, 27)).toPoint());
+        QCOMPARE(root->property("current").toString(), show);
+        QCOMPARE(playlists.find(show).value("kind").toString(), QString("folder"));
+
+        // Rename, Enter, then the keys work on the list again.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("My show"))
+            QTest::keyClick(&window, c);
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(playlists.find(show).value("name").toString(), QString("My show"));
+        editor->setProperty("selection", 2);
+        QTest::keyClick(&window, Qt::Key_Delete);
+        // The edit made it a list of its own; the page followed the new id.
+        const QString own = root->property("current").toString();
+        QVERIFY(own != show && own.startsWith("saved:"));
+        QCOMPARE(editor->property("playlistId").toString(), own);
+        QCOMPARE(playlists.find(own).value("count").toInt(), 2);
+
+        // Removing a file above the selection keeps the selection on its file.
+        editor->setProperty("selection", 1);
+        QMetaObject::invokeMethod(editor, "removeRow", Q_ARG(QVariant, 0));
+        QCOMPARE(editor->property("selection").toInt(), 0);
+
+        // A typed name is kept when another playlist opens, and the page
+        // then shows that one.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("Kept"))
+            QTest::keyClick(&window, c);
+        QMetaObject::invokeMethod(editor, "saveName");
+        root->setProperty("current", other);
+        QCOMPARE(playlists.find(own).value("name").toString(), QString("Kept"));
+        QCOMPARE(editor->property("info").toMap().value("name").toString(), QString("Other"));
+        QTRY_VERIFY(find(window.contentItem(), "grip2"));
+    }
+
     void editingAFolderPlaylistMakesItsOwnList()
     {
         QTemporaryDir data, cache, media;

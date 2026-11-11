@@ -15,7 +15,12 @@ FocusScope {
     // The playlist open in the editor, if any.
     property string editingId: ""
 
-    function editPlaylist(id) { editingId = id; editor.forceActiveFocus() }
+    function editPlaylist(id) {
+        if (editingId) editor.saveName()
+        editingId = id
+        editor.selection = -1
+        editor.takeKeys()
+    }
     function newPlaylist() {
         const id = playlists.save(qsTr("New playlist"))
         if (!id) { app.showError(qsTr("Couldn't save the playlist.")); return }
@@ -23,6 +28,7 @@ FocusScope {
         editor.renameNow()
     }
     function closeEditor() { editingId = ""; home.forceActiveFocus() }
+    function saveEditor() { if (editingId) editor.saveName() }
     function addToEditor(urls) { editor.add(urls) }
     function escapeEditor() { editor.leave() }
 
@@ -200,6 +206,13 @@ FocusScope {
                     color: theme.dim
                     font.pixelSize: 13
                 }
+                PillButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    icon: "playlist"
+                    text: qsTr("New playlist")
+                    hint: KeyNames.label("Ctrl+N")
+                    onClicked: home.newPlaylist()
+                }
             }
         }
     }
@@ -322,6 +335,7 @@ FocusScope {
         visible: home.editingId !== ""
         focus: visible
         onClosed: home.closeEditor()
+        onMoved: (id) => home.editingId = id
     }
 
     component SectionTitle: Text {

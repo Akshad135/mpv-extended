@@ -9,10 +9,14 @@ FocusScope {
     required property var app
     property string playlistId
     signal closed()
+    // The playlist got a new id (a folder's playlist became a list of its
+    // own); whoever opened the page follows it.
+    signal moved(string id)
 
     readonly property var info: { playlists.all; return playlists.find(playlistId) }
     property int selection: -1
     property bool dragging: false
+    property string orderBeforeDrag
     property bool committing: false
     property bool confirmDelete: false
 
@@ -40,7 +44,7 @@ FocusScope {
             reload()
             return
         }
-        playlistId = id
+        if (id !== playlistId) moved(id)
     }
     function add(urls) {
         const added = library.collect(urls)
@@ -71,20 +75,36 @@ FocusScope {
     function removeRow(i) {
         if (i < 0 || i >= files.count) return
         files.remove(i)
+        if (i < selection) --selection
         selection = Math.min(selection, files.count - 1)
         commit()
     }
-    function play(path) { app.openPlaylist(playlistId, path || "") }
+    function play(path) {
+        saveName()
+        app.openPlaylist(playlistId, path || "")
+    }
     function renameNow() { nameField.forceActiveFocus(); nameField.selectAll() }
+    // Keys go to the list's handler, not the name. (Focusing the scope
+    // itself would hand focus straight back to the name.)
+    function takeKeys() { keySink.forceActiveFocus() }
+    // A typed name is kept however the page is left: Enter, a click
+    // elsewhere, Back, or another playlist opened.
+    function saveName() {
+        const name = nameField.text.trim()
+        if (playlistId && name && name !== info.name) playlists.rename(playlistId, name)
+        nameField.text = Qt.binding(() => editor.info.name || "")
+    }
     // Esc leaves a rename unchanged first, and only then the page.
     function leave() {
         if (nameField.activeFocus) {
             nameField.text = Qt.binding(() => editor.info.name || "")
-            editor.forceActiveFocus()
+            takeKeys()
         } else {
+            saveName()
             closed()
         }
     }
+    Item { id: keySink; focus: true }
 
     onPlaylistIdChanged: if (paths().join("\n") !== playlists.entries(playlistId).map(e => e.path).join("\n")) reload()
     // Changes from another window, or a folder scanned again on opening.
@@ -99,6 +119,7 @@ FocusScope {
     }
 
     Keys.onPressed: (event) => {
+        if (nameField.activeFocus) return // keys typed into the name stay there
         const ctrl = event.modifiers & (Qt.ControlModifier | Qt.AltModifier)
         if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
             event.accepted = true
@@ -120,6 +141,8 @@ FocusScope {
     }
 
     Rectangle { anchors.fill: parent; color: theme.background }
+    // Clicks between the controls stay on this page, not the library under it.
+    MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onClicked: editor.takeKeys(); onWheel: (wheel) => wheel.accepted = true }
 
     // Header: back, the name (edited in place), and what can be done.
     Item {
@@ -164,11 +187,11 @@ FocusScope {
                 selectionColor: theme.alpha(theme.accent, 0.4)
                 selectedTextColor: theme.strong
                 selectByMouse: true
-                onAccepted: editor.forceActiveFocus()
-                onEditingFinished: {
-                    if (text.trim() && text !== editor.info.name) playlists.rename(editor.playlistId, text)
-                    text = Qt.binding(() => editor.info.name || "")
-                }
+                // The start of a long name shows when it's not being edited.
+                autoScroll: activeFocus
+                onActiveFocusChanged: if (!activeFocus) cursorPosition = 0
+                onAccepted: editor.takeKeys()
+                onEditingFinished: editor.saveName()
             }
         }
         Text {
@@ -302,7 +325,7 @@ FocusScope {
                     id: rowArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: { editor.selection = slot.index; editor.forceActiveFocus() }
+                    onClicked: { editor.selection = slot.index; editor.takeKeys() }
                     onDoubleClicked: editor.play(slot.path)
                 }
 
@@ -316,19 +339,27 @@ FocusScope {
                     cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
                     drag.target: row
                     drag.axis: Drag.YAxis
-                    onPressed: { editor.selection = slot.index; editor.dragging = true }
+                    onPressed: {
+                        editor.selection = slot.index
+                        editor.takeKeys()
+                        editor.orderBeforeDrag = editor.paths().join("\n")
+                        editor.dragging = true
+                    }
                     onPositionChanged: {
                         if (!drag.active) return
                         const y = row.mapToItem(list, 0, 0).y
                         edgeScroll.speed = y < 24 ? -10 : y + row.height > list.height - 24 ? 10 : 0
                     }
-                    onReleased: {
+                    function finish() {
                         edgeScroll.speed = 0
                         editor.dragging = false
                         editor.selection = row.rowIndex
-                        editor.commit()
+                        // A click on the grip changes nothing, so saves nothing
+                        // (and leaves a folder's playlist following its folder).
+                        if (editor.paths().join("\n") !== editor.orderBeforeDrag) editor.commit()
                     }
-                    onCanceled: { edgeScroll.speed = 0; editor.dragging = false; editor.commit() }
+                    onReleased: finish()
+                    onCanceled: finish()
                     Glyph { anchors.centerIn: parent; width: 18; height: 18; name: "grip"; lineWidth: 3.2; color: theme.muted }
                 }
 
