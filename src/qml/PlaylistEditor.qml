@@ -300,8 +300,12 @@ FocusScope {
             required property bool available
             width: ListView.view.width
             height: 54
+            // Only rows of this list: files dragged in from outside go to
+            // the window, which adds them.
+            keys: ["mpv-extended/row"]
             // Another row dragged over this one takes its place.
             onEntered: (drag) => {
+                if (!drag.source) return
                 const from = drag.source.rowIndex
                 if (from !== slot.index) files.move(from, slot.index, 1)
             }
@@ -315,6 +319,7 @@ FocusScope {
                 anchors.verticalCenter: parent.verticalCenter
                 Drag.active: grip.drag.active
                 Drag.source: row
+                Drag.keys: ["mpv-extended/row"]
                 Drag.hotSpot.x: width / 2
                 Drag.hotSpot.y: height / 2
                 states: State {

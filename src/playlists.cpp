@@ -226,7 +226,12 @@ void Playlists::refresh() {
 
 QVariantMap Playlists::open(const QString &id, const QString &startAt, int near) {
     const QVariantMap none{{"files", QStringList()}, {"index", 0}};
-    const auto it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const Item &i) { return i.id == id; });
+    auto it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const Item &i) { return i.id == id; });
+    if (it == m_items.cend()) {
+        // Perhaps made in another window since this one last read.
+        refresh();
+        it = std::find_if(m_items.cbegin(), m_items.cend(), [&](const Item &i) { return i.id == id; });
+    }
     if (it == m_items.cend() || (it->kind == "folder" && !QFileInfo(it->source).isDir()))
         return none;
     // The files come from what's on disk, read under the lock: another

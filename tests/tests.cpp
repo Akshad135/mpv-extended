@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QMimeData>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlContext>
@@ -375,6 +376,9 @@ private slots:
         QCOMPARE(opened.value("files").toStringList().size(), 4);
         second.refresh();
         QCOMPARE(second.find(id).value("count").toInt(), 4);
+        // A playlist made in the other window opens without a refresh.
+        const QString fresh = second.save("Fresh", {"/m/f.mkv"});
+        QCOMPARE(first.open(fresh).value("files").toStringList(), QStringList{"/m/f.mkv"});
         // A file listed twice plays from the copy that was picked.
         QCOMPARE(first.open(id, "/m/a.mkv", 2).value("index").toInt(), 2);
         QCOMPARE(first.open(id, "/m/a.mkv").value("index").toInt(), 0);
@@ -454,6 +458,23 @@ private slots:
         }
         QTest::mouseRelease(&window, Qt::LeftButton, {}, start + QPoint(0, 54 * 2 + 10));
         QTRY_COMPARE(order(), QString("bcad"));
+
+        // A file dragged in from outside passes over the rows quietly.
+        {
+            QMimeData mime;
+            mime.setUrls({QUrl::fromLocalFile("/m/new.mkv")});
+            const QPoint over = grip->mapToScene(QPointF(200, 27)).toPoint();
+            QDragEnterEvent enter(over, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+            QTest::failOnWarning(QRegularExpression(".*TypeError.*"));
+            QCoreApplication::sendEvent(&window, &enter);
+            for (int dy = 0; dy < 120; dy += 10) {
+                QDragMoveEvent move(over + QPoint(0, dy), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(&window, &move);
+            }
+            QDragLeaveEvent leave;
+            QCoreApplication::sendEvent(&window, &leave);
+            QCOMPARE(order(), QString("bcad"));
+        }
 
         // Keys: Ctrl+Down moves the selected file, Delete removes it.
         QQuickItem *editor = root->property("editor").value<QQuickItem *>();
