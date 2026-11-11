@@ -15,6 +15,9 @@ Rectangle {
     border.color: theme.alpha(theme.foreground, 0.12)
     visible: x < (parent ? parent.width : 0)
 
+    // Clicks on the panel's own surface stay here, not on the picture.
+    MouseArea { anchors.fill: parent }
+
     Item {
         id: header
         anchors.left: parent.left

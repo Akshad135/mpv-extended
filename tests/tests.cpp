@@ -19,7 +19,13 @@ class Tests : public QObject {
 private slots:
     // Nothing here may touch the real history: default paths go to a test
     // location instead.
-    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
+    void initTestCase()
+    {
+        QStandardPaths::setTestModeEnabled(true);
+        // Not the live Hyprland: its events would trigger refreshes and hide
+        // a broken rerun in the rounding test.
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+    }
 
     void formatsTime()
     {

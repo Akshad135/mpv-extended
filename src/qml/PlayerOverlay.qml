@@ -96,8 +96,6 @@ Item {
         tracksSheet.close()
         speedSheet.opened ? speedSheet.close() : speedSheet.open()
     }
-    // The file after the one that just ended, by position, so repeats can't
-    // skip ahead. Does nothing once Up next is cancelled or a switch began.
     // Up next no longer drives: its card goes and the end-of-file choices
     // (Watch again, Library) take over if the file stays.
     function stepAsideUpNext() {
@@ -105,6 +103,8 @@ Item {
         upNextStarted = false
         upNextCancelled = true
     }
+    // The file after the one that just ended, by position, so repeats can't
+    // skip ahead. Does nothing once Up next is cancelled or a switch began.
     function playUpNext() {
         if (!upNext.available || upNextStarted) return
         upNext.startedEntry = upNext.entry
@@ -381,6 +381,9 @@ Item {
         Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
 
         HoverHandler { id: dockHover }
+        // Clicks between the controls stay on the dock instead of reaching
+        // the picture underneath (which would pause, or go fullscreen).
+        MouseArea { anchors.fill: parent }
 
         ShaderEffectSource {
             id: behind
@@ -604,6 +607,9 @@ Item {
     // What plays next, counting down at the end of a file.
     Rectangle {
         id: upNext
+        // Clicks on the card itself never reach the picture (at the end of a
+        // file that would restart it).
+        MouseArea { anchors.fill: parent; enabled: upNext.visible }
         // Stays up while its own switch waits for the frame (upNextStarted,
         // inert), and goes for any other switch or a trip to the library.
         readonly property bool available: overlay.player.eof && overlay.hasPlaylist && !overlay.upNextCancelled
@@ -643,8 +649,8 @@ Item {
             property: "progress"
             from: 0; to: 1
             duration: 6000
-            // Waits while the queue or the shortcuts cover the card.
-            paused: running && (overlay.playlistOpen || overlay.app.helpVisible)
+            // Waits while a menu, the queue, or the shortcuts cover the card.
+            paused: running && (overlay.menusOpen || overlay.app.helpVisible)
             onFinished: overlay.playUpNext()
         }
 

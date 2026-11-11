@@ -44,12 +44,13 @@ FocusScope {
         if ([Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down].includes(event.key)) {
             move(event.key); event.accepted = true
         } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && selection >= 0) {
-            open(entryAt(selection)); event.accepted = true
+            event.accepted = true
+            if (!event.isAutoRepeat) open(entryAt(selection))
         } else if (event.key === Qt.Key_Delete && selection >= 0) {
             // One entry per press: a held key must not clear the history.
             event.accepted = true
             if (event.isAutoRepeat) return
-            library.forget(entryAt(selection).path); event.accepted = true
+            library.forget(entryAt(selection).path)
         }
     }
 

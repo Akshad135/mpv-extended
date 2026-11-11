@@ -34,7 +34,6 @@ int signalPipe[2] = {-1, -1};
 } // namespace
 
 int main(int argc, char *argv[]) {
-    // mpv draws through OpenGL, so Qt Quick has to render with it too.
     // Answered before any display is opened, so they work over SSH and in
     // package builds too.
     for (int i = 1; i < argc; ++i) {
@@ -50,6 +49,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // mpv draws through OpenGL, so Qt Quick has to render with it too.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QGuiApplication app(argc, argv);

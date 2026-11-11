@@ -51,7 +51,9 @@ Rectangle {
         ]},
     ]
 
-    MouseArea { anchors.fill: parent; onClicked: help.dismissed() }
+    // Clicks dismiss; the wheel doesn't reach the volume or the library
+    // underneath.
+    MouseArea { anchors.fill: parent; onClicked: help.dismissed(); onWheel: (wheel) => wheel.accepted = true }
 
     Rectangle {
         anchors.centerIn: parent
