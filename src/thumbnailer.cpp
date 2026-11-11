@@ -1,5 +1,7 @@
 #include "thumbnailer.h"
 
+#include "framegrab.h"
+
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -85,6 +87,7 @@ void Thumbnailer::reset() {
     m_running.clear();
     m_queue.clear();
     m_done.clear();
+    m_slow.clear();
     m_count = 0;
 }
 
@@ -140,9 +143,12 @@ void Thumbnailer::pump() {
         // also covers killed runs and the app quitting mid-frame.
         connect(process, &QObject::destroyed, [partial] { QFile::remove(partial); });
         process->setProgram(m_ffmpeg);
-        process->setArguments({"-hide_banner", "-loglevel", "error", "-nostdin", "-ss", QString::number(at, 'f', 2),
-                               "-i", m_path, "-frames:v", "1", "-an", "-sn", "-vf", "scale=320:-2", "-q:v", "5",
-                               "-y", partial});
+        // The nearest keyframe is close enough for a preview.
+        process->setArguments(QStringList{"-hide_banner", "-loglevel", "error", "-nostdin"}
+                              << cheapSeek(at, !m_slow.contains(index))
+                              << QStringList{"-i", m_path, "-frames:v", "1", "-an", "-sn", "-vf", "scale=320:-2",
+                                             "-q:v", "5", "-y", partial});
+        runInBackground(process);
         connect(process, &QProcess::finished, this, [this, process, index, target, partial](int code) {
             m_running.removeOne(process);
             process->deleteLater();
@@ -155,6 +161,9 @@ void Thumbnailer::pump() {
                     ++m_revision;
                     emit revisionChanged();
                 }
+            } else if (!m_slow.contains(index)) {
+                m_slow.insert(index);
+                m_queue.prepend(index);
             }
             pump();
         });

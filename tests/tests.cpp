@@ -2,6 +2,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -291,6 +292,15 @@ private slots:
         QVERIFY(QFileInfo(percent).size() > 0);
         QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
 
+        // A quick grab (library cards) is scaled down to at most 640 wide.
+        const QString wide = dir.filePath("wide.mkv"), card = dir.filePath("card.jpg");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i",
+                                            "testsrc2=size=1280x720:rate=10", "-t", "3", wide}), 0);
+        result = -1;
+        grabFrameWithFfmpeg(&owner, wide, 1.5, card, [&](bool ok) { result = ok; }, ffmpeg, true);
+        QTRY_COMPARE_WITH_TIMEOUT(result, 1, 10000);
+        QCOMPARE(QImage(card).width(), 640);
+
         result = -1;
         grabFrameWithFfmpeg(&owner, dir.filePath("missing.mkv"), 1, frame, [&](bool ok) { result = ok; });
         QCOMPARE(result, 0);
@@ -299,6 +309,30 @@ private slots:
                             [&](bool ok) { result = ok; });
         QTRY_COMPARE_WITH_TIMEOUT(result, 0, 10000);
         QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
+    }
+
+    void previewsCoverTheWholeFile()
+    {
+        const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+        if (ffmpeg.isEmpty())
+            QSKIP("ffmpeg isn't installed");
+        // B-frames and a single keyframe: the cheap keyframe-only grab comes
+        // back empty here, so every preview takes the retry.
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("clip.mkv");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10",
+                                            "-t", "12", "-c:v", "libx264", "-bf", "3", clip}), 0);
+        Thumbnailer thumbnailer(dir.filePath("frames"), ffmpeg);
+        thumbnailer.prepare(clip, 12);
+        const int count = Thumbnailer::frameCount(12);
+        auto all = [&] {
+            for (int i = 0; i < count; ++i)
+                if (!thumbnailer.frameAt((i + .5) / count).endsWith(QString("/%1.jpg").arg(i)))
+                    return false;
+            return true;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(all(), 30000);
+        QCOMPARE(QDir(dir.filePath("frames")).entryList({"*/*.part.jpg"}).size(), 0);
     }
 
     void themeFallsBack()

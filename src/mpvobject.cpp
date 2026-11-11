@@ -344,15 +344,21 @@ void MpvObject::handleEvent(mpv_event *event) {
         if (event->error >= 0) {
             emit screenshotFinished(shot.tag, true);
         } else {
-            // mpv's software screenshot can't read frames kept on an NVIDIA
-            // GPU; ffmpeg reads the same moment from the file instead.
-            grabFrameWithFfmpeg(this, shot.source, shot.position, shot.file,
-                                [this, tag = shot.tag](bool ok) { emit screenshotFinished(tag, ok); });
+            // mpv's software screenshot can't read frames kept on the GPU
+            // (VA-API, NVDEC); ffmpeg reads the same moment from the file.
+            grabFrameWithFfmpeg(
+                this, shot.source, shot.position, shot.file,
+                [this, tag = shot.tag](bool ok) { emit screenshotFinished(tag, ok); }, {}, shot.quick);
         }
         break;
     }
     case MPV_EVENT_LOG_MESSAGE: {
         auto *message = static_cast<mpv_event_log_message *>(event->data);
+        // A screenshot of a hardware-decoded frame fails by design; ffmpeg
+        // takes over (above), so its errors are noise.
+        if (qstrcmp(message->prefix, "screenshot") == 0 ||
+            QByteArray(message->text).startsWith("Error writing screenshot"))
+            break;
         qWarning("mpv[%s] %s: %s", message->prefix, message->level, QByteArray(message->text).trimmed().constData());
         break;
     }
@@ -448,6 +454,6 @@ void MpvObject::playIndex(int index) {
 void MpvObject::screenshotTo(const QString &file, const QString &tag, bool withSubtitles) {
     const QList<QByteArray> args{"screenshot-to-file", file.toUtf8(), withSubtitles ? "subtitles" : "video"};
     const quint64 reply = m_nextReply++;
-    m_screenshots.insert(reply, {tag, file, path(), position()});
+    m_screenshots.insert(reply, {tag, file, path(), position(), !withSubtitles});
     runCommand(m_mpv, args, reply);
 }
