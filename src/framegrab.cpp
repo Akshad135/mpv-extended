@@ -10,6 +10,13 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+QString ffmpegProgram() {
+    const QString bundled = QCoreApplication::instance()
+                                ? QStandardPaths::findExecutable("ffmpeg", {QCoreApplication::applicationDirPath()})
+                                : QString();
+    return bundled.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : bundled;
+}
+
 void runInBackground(QProcess *process) {
     process->setChildProcessModifier([] {
         // Only async-signal-safe calls here: this runs between fork and exec.
@@ -77,7 +84,7 @@ void grab(QObject *owner, const QString &program, const QString &input, double p
 
 void grabFrameWithFfmpeg(QObject *owner, const QString &input, double position, const QString &output,
                          std::function<void(bool)> done, const QString &ffmpeg, bool quick) {
-    const QString program = ffmpeg.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : ffmpeg;
+    const QString program = ffmpeg.isEmpty() ? ffmpegProgram() : ffmpeg;
     if (program.isEmpty() || !QFileInfo(input).isFile() || output.isEmpty()) {
         done(false);
         return;

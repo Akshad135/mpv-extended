@@ -6,7 +6,7 @@ QT += core gui gui-private network qml quick quickcontrols2 dbus opengl
 CONFIG += c++17 release link_pkgconfig
 PKGCONFIG += mpv wayland-client
 TARGET = mpv-extended
-VERSION = 0.1.0  # keep in step with pkgbuild/PKGBUILD
+VERSION = 0.2.0  # keep in step with pkgbuild/PKGBUILD
 DEFINES += APP_VERSION=\\\"$$VERSION\\\"
 # bin/build CONFIG+=dev adds the MPV_EXTENDED_GRAB screenshot hook (see main.cpp).
 dev: DEFINES += MPV_EXTENDED_DEV

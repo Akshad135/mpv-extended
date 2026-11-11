@@ -27,3 +27,7 @@ void runInBackground(class QProcess *process);
 // still, but can come back empty in a file's last stretch, so callers retry
 // once without it.
 QStringList cheapSeek(double position, bool keyframesOnly);
+
+// The ffmpeg beside the app's binary (the AppImage bundles one), else the
+// one on PATH. Empty if there's neither.
+QString ffmpegProgram();

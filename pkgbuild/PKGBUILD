@@ -1,6 +1,6 @@
 # Maintainer: akshad135 <97957252+akshad135@users.noreply.github.com>
 pkgname=mpv-extended
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='A video player for Omarchy, built on libmpv'
 arch=('x86_64' 'aarch64')
