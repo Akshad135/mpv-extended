@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QLocale>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -119,6 +120,17 @@ void Library::save() {
     if (!m_dirty)
         return;
 
+    // One window at a time reads, merges, and writes, so neither drops the
+    // other's save. A lock left by a crashed window goes stale and is taken.
+    QDir().mkpath(QFileInfo(m_dataFile).absolutePath());
+    QLockFile lock(m_dataFile + ".lock");
+    lock.setStaleLockTime(10000);
+    if (!lock.tryLock(2000)) {
+        qWarning("mpv-extended: history is locked by another window; saving later");
+        touch();
+        return;
+    }
+
     // Another window may have saved since this one loaded. Merge per
     // file, newest play wins, so neither window erases the other's progress.
     // A removal wins over any play from before it, whichever window saves
@@ -216,9 +228,10 @@ void Library::update(const QString &path, const QString &title, double position,
         e.duration = duration;
     e.position = std::max(0.0, position);
     e.finished = isFinished(e.position, e.duration);
-    // Always after a removal of the same file, even within one millisecond,
-    // so playing it again brings it back.
-    e.lastPlayed = std::max(QDateTime::currentMSecsSinceEpoch(), m_forgotten.value(path, 0) + 1);
+    // Always newer than what's there and than a removal of the same file,
+    // even within one millisecond or with the clock stepped back, so the
+    // newest play really wins the merge in save().
+    e.lastPlayed = std::max({QDateTime::currentMSecsSinceEpoch(), e.lastPlayed + 1, m_forgotten.value(path, 0) + 1});
     trim();
     // Saved, but the lists aren't rebuilt: the library isn't on screen while
     // something plays, and refresh() updates it on the way back.
@@ -385,10 +398,13 @@ QString Library::clipboardText() const {
 }
 
 QString Library::frameCaptureFile(const QString &title, double position) const {
-    QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-    if (pictures.isEmpty())
-        pictures = QDir::homePath();
-    const QString directory = pictures + "/mpv-extended";
+    QString directory = m_captureDirectory;
+    if (directory.isEmpty()) {
+        QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+        if (pictures.isEmpty())
+            pictures = QDir::homePath();
+        directory = pictures + "/mpv-extended";
+    }
     QDir().mkpath(directory);
     QString name = title;
     name.replace(QRegularExpression(R"([/\\:*?"<>|]+)"), " ");
@@ -396,9 +412,12 @@ QString Library::frameCaptureFile(const QString &title, double position) const {
     if (name.isEmpty())
         name = "frame";
     const QString stamp = format(position).replace(':', '.');
+    // Names handed out are remembered too: the picture is written later, so
+    // two captures within the same second would otherwise share one name.
     QString file = QString("%1/%2 %3.jpg").arg(directory, name, stamp);
-    for (int n = 2; QFileInfo::exists(file); ++n)
+    for (int n = 2; QFileInfo::exists(file) || m_capturesGiven.contains(file); ++n)
         file = QString("%1/%2 %3 (%4).jpg").arg(directory, name, stamp, QString::number(n));
+    m_capturesGiven.insert(file);
     return file;
 }
 

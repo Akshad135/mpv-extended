@@ -33,6 +33,11 @@ ApplicationWindow {
     readonly property bool playerKeys: inPlayer && !helpVisible
     onInPlayerChanged: if (!inPlayer) library.refresh()
 
+    // Fills %1, %2, ... in one pass, so a file name that contains "%2"
+    // stays as it is (chained .arg() would substitute into it).
+    function fill(template, values) {
+        return template.replace(/%(\d)/g, (match, n) => n >= 1 && n <= values.length ? String(values[n - 1]) : match)
+    }
     function toast(icon, text) { toastItem.show(icon, text, false) }
     function showError(text) { toastItem.show("warning", text, true) }
 
@@ -45,6 +50,12 @@ ApplicationWindow {
             return
         }
         helpVisible = false
+        // Whatever was playing keeps its place, and a switch or a trip to the
+        // library that was still waiting for its frame is called off.
+        saveProgress(true)
+        ++navSerial
+        switchTarget = -1
+        goingHome = false
         mpv.loadFiles(result.files, result.index)
     }
 
@@ -109,6 +120,7 @@ ApplicationWindow {
     // N presses move the target instead of starting a second switch, and
     // nothing switches files once the library is on its way.
     property int switchTarget: -1
+    property int navSerial: 0
     property bool goingHome: false
     readonly property int targetPos: switchTarget >= 0 ? switchTarget : mpv.playlistPos
 
@@ -118,8 +130,13 @@ ApplicationWindow {
         overlay.closeMenus()
         goingHome = true
         switchTarget = -1
+        const serial = ++navSerial
         mpv.set("pause", true)
-        leaveFile(() => { goingHome = false; mpv.stop() })
+        leaveFile(() => {
+            if (serial !== navSerial) return
+            goingHome = false
+            mpv.stop()
+        })
     }
 
     function playAt(index) {
@@ -127,7 +144,9 @@ ApplicationWindow {
         if (switchTarget >= 0) { switchTarget = index; return }
         if (index === mpv.playlistPos) return
         switchTarget = index
+        const serial = ++navSerial
         leaveFile(() => {
+            if (serial !== navSerial) return
             const target = switchTarget
             switchTarget = -1
             if (target >= 0 && target !== mpv.playlistPos) mpv.playIndex(target)
@@ -177,7 +196,7 @@ ApplicationWindow {
         target: mpv
         function onFailed(path, reason) {
             const name = String(path).split("/").pop() || path
-            win.showError(qsTr("Can't play %1: %2").arg(name).arg(reason))
+            win.showError(win.fill(qsTr("Can't play %1: %2"), [name, reason]))
         }
         function onResumed(position) { win.toast("replay", qsTr("Resumed at %1").arg(library.formatTime(position))) }
         function onScreenshotFinished(tag, ok) {
@@ -328,7 +347,7 @@ ApplicationWindow {
     Shortcut { enabled: win.playerKeys; sequence: "P"; context: Qt.ApplicationShortcut; onActivated: if (overlay.hasPlaylist) overlay.togglePlaylist() }
     Shortcut { enabled: win.playerKeys; sequence: "N"; context: Qt.ApplicationShortcut; onActivated: win.playNext() }
     Shortcut { enabled: win.playerKeys; sequence: "Shift+N"; context: Qt.ApplicationShortcut; onActivated: win.playPrevious() }
-    Shortcut { enabled: win.playerKeys; sequence: "Return"; context: Qt.ApplicationShortcut; onActivated: if (mpv.eof) win.playNext() }
+    Shortcut { enabled: win.playerKeys; sequence: "Return"; context: Qt.ApplicationShortcut; onActivated: overlay.playUpNext() }
     Shortcut { enabled: win.playerKeys; sequence: "PgUp"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", -1]) }
     Shortcut { enabled: win.playerKeys; sequence: "PgDown"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", 1]) }
     Shortcut { enabled: win.playerKeys; sequence: "Ctrl+S"; context: Qt.ApplicationShortcut; onActivated: win.captureFrame() }

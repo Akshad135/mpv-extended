@@ -37,6 +37,11 @@ IdleInhibit::IdleInhibit(QObject *parent) : QObject(parent) {
     wl_proxy_wrapper_destroy(wrapper);
     wl_registry_add_listener(m_registry, &registryListener, &m_manager);
     wl_display_roundtrip_queue(display, m_queue);
+    // Nothing else is needed from the registry. Dropping it now means no
+    // later events (outputs coming and going) pile up in a queue nobody
+    // reads; the manager stays valid without it.
+    wl_registry_destroy(m_registry);
+    m_registry = nullptr;
     if (!m_manager)
         qWarning("mpv-extended: the compositor has no idle-inhibit protocol; the screen may sleep during video");
 }

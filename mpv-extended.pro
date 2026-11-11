@@ -1,3 +1,6 @@
+# gui-private only for QPlatformNativeInterface (the window's wl_surface for
+# idle-inhibit): a virtual call through the public platformNativeInterface().
+# No private symbols are linked (objdump -T shows none tagged PRIVATE).
 QT += core gui gui-private network qml quick quickcontrols2 dbus opengl
 
 CONFIG += c++17 release link_pkgconfig

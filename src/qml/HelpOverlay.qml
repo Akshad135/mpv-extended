@@ -14,7 +14,7 @@ Rectangle {
 
     readonly property var groups: [
         { title: qsTr("Playback"), keys: [
-            ["Space", qsTr("Play or pause")],
+            [qsTr("Space") + "  K", qsTr("Play or pause")],
             ["← →", qsTr("Back or forward 5 s")],
             ["J  L", qsTr("Back or forward 10 s")],
             ["Shift+← →", qsTr("Back or forward 1 s")],
@@ -22,7 +22,7 @@ Rectangle {
             ["0 – 9", qsTr("Jump to 0–90%")],
             ["PgUp PgDn", qsTr("Previous or next chapter")],
             ["[ ]", qsTr("Slower or faster")],
-            ["Backspace", qsTr("Normal speed")],
+            [qsTr("Backspace"), qsTr("Normal speed")],
         ]},
         { title: qsTr("Sound and subtitles"), keys: [
             ["↑ ↓", qsTr("Volume")],
@@ -34,7 +34,7 @@ Rectangle {
         { title: qsTr("Window and queue"), keys: [
             ["F  F11", qsTr("Fullscreen")],
             ["N  Shift+N", qsTr("Next or previous file")],
-            ["Enter", qsTr("At the end, play the next file")],
+            [qsTr("Enter"), qsTr("At the end, play the next file")],
             ["P", qsTr("Show the queue")],
             ["Ctrl+S", qsTr("Save the frame to Pictures")],
             ["Esc", qsTr("Close, leave fullscreen, or go to the library")],
@@ -43,8 +43,8 @@ Rectangle {
             ["Ctrl+O", qsTr("Open files")],
             ["Ctrl+Shift+O", qsTr("Open a folder")],
             ["Ctrl+V", qsTr("Open a copied link or path")],
-            ["Arrows  Enter", qsTr("Pick and play")],
-            ["Delete", qsTr("Remove from history")],
+            [qsTr("Arrows") + "  " + qsTr("Enter"), qsTr("Pick and play")],
+            [qsTr("Delete"), qsTr("Remove from history")],
             ["?", qsTr("Show these shortcuts")],
             ["Q", qsTr("Quit")],
         ]},

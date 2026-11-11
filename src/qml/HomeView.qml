@@ -85,8 +85,10 @@ FocusScope {
             anchors.rightMargin: 24
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-            PillButton { icon: "link"; text: qsTr("Paste link"); hint: "Ctrl+V"; onClicked: home.app.openClipboard() }
-            PillButton { icon: "folder"; text: qsTr("Open folder"); hint: "Ctrl+Shift+O"; onClicked: picker.openFolder() }
+            // Narrow windows keep the name readable: the secondary buttons
+            // shrink to icons, with their names in the tooltip.
+            PillButton { icon: "link"; text: qsTr("Paste link"); hint: "Ctrl+V"; compact: home.width < 760; onClicked: home.app.openClipboard() }
+            PillButton { icon: "folder"; text: qsTr("Open folder"); hint: "Ctrl+Shift+O"; compact: home.width < 760; onClicked: picker.openFolder() }
             PillButton { icon: "plus"; text: qsTr("Open"); hint: "Ctrl+O"; primary: true; onClicked: picker.openFiles() }
             IconButton { icon: "help"; tip: qsTr("Shortcuts (?)"); anchors.verticalCenter: parent.verticalCenter; onClicked: home.app.helpVisible = !home.app.helpVisible }
         }
@@ -211,9 +213,10 @@ FocusScope {
         property string text
         property string hint
         property bool primary: false
+        property bool compact: false
         signal clicked()
         height: 36
-        width: pillRow.implicitWidth + 28
+        width: compact ? height : pillRow.implicitWidth + 28
         radius: Math.min(theme.radius, 18)
         color: primary ? (pillArea.containsMouse ? theme.mix(theme.accent, theme.strong, 0.15) : theme.accent)
                        : (pillArea.containsMouse ? theme.alpha(theme.foreground, 0.1) : theme.alpha(theme.foreground, 0.05))
@@ -224,11 +227,11 @@ FocusScope {
             anchors.centerIn: parent
             spacing: 8
             Glyph { name: pill.icon; width: 16; height: 16; color: pill.primary ? theme.accentText : theme.strong; anchors.verticalCenter: parent.verticalCenter }
-            Text { text: pill.text; color: pill.primary ? theme.accentText : theme.strong; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            Text { visible: !pill.compact; text: pill.text; color: pill.primary ? theme.accentText : theme.strong; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
         }
         MouseArea { id: pillArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.clicked() }
         ToolTip.visible: hint.length > 0 && pillArea.containsMouse
-        ToolTip.text: hint
+        ToolTip.text: compact ? text + "  " + hint : hint
         ToolTip.delay: 600
     }
 }

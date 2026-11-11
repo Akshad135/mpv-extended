@@ -72,7 +72,7 @@ Item {
         const parts = []
         if (t.forced) parts.push(qsTr("Forced"))
         if (t.external) parts.push(qsTr("File"))
-        if (t["demux-channel-count"]) parts.push(t["demux-channel-count"] + "ch")
+        if (t["demux-channel-count"]) parts.push(qsTr("%1 ch").arg(t["demux-channel-count"]))
         if (t.codec) parts.push(String(t.codec).toUpperCase().replace("SUBRIP", "SRT"))
         return parts.join("  ")
     }
@@ -94,6 +94,16 @@ Item {
         tracksSheet.close()
         speedSheet.opened ? speedSheet.close() : speedSheet.open()
     }
+    // The file after the one that just ended, by position, so repeats can't
+    // skip ahead. Does nothing once Up next is cancelled or a switch began.
+    function playUpNext() {
+        if (!upNext.available) return
+        countdown.stop()
+        app.playAt(player.playlistPos + 1)
+    }
+    // A queue that shrinks to one file has nothing to show, and P and the
+    // button that would close it are gone.
+    onHasPlaylistChanged: if (!hasPlaylist) playlistOpen = false
     function togglePlaylist() {
         if (!hasPlaylist) { playlistOpen = false; return }
         tracksSheet.close(); speedSheet.close(); playlistOpen = !playlistOpen
@@ -122,12 +132,18 @@ Item {
         acceptedButtons: Qt.LeftButton
         cursorShape: overlay.controlsShown ? Qt.ArrowCursor : Qt.BlankCursor
         onPositionChanged: overlay.wake()
+        // The first click of a double click toggles pause; the double click
+        // undoes that, and only that (not a menu close or a restart at the end).
+        property bool clickPaused: false
         onClicked: {
+            clickPaused = false
             if (overlay.justClosedMenu() || overlay.closeMenus()) return
+            clickPaused = !overlay.player.eof
             overlay.togglePause()
         }
         onDoubleClicked: {
-            overlay.player.togglePause()
+            if (clickPaused) overlay.player.togglePause()
+            clickPaused = false
             overlay.app.toggleFullscreen()
         }
         onWheel: (wheel) => {
@@ -285,7 +301,7 @@ Item {
             spacing: 6
             Glyph { name: seekChip.total >= 0 ? "forward" : "rewind"; width: 18; height: 18; color: theme.strong; anchors.verticalCenter: parent.verticalCenter }
             Text {
-                text: (seekChip.total >= 0 ? "+" : "−") + Math.abs(seekChip.total) + "s"
+                text: (seekChip.total >= 0 ? "+" : "−") + qsTr("%1 s").arg(Math.abs(seekChip.total))
                 color: theme.strong
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
@@ -573,7 +589,10 @@ Item {
     // What plays next, counting down at the end of a file.
     Rectangle {
         id: upNext
+        // Gone as soon as any switch starts, so the countdown and a click
+        // can never both advance.
         readonly property bool available: overlay.player.eof && overlay.hasPlaylist && !overlay.upNextCancelled
+                                          && overlay.app.switchTarget < 0 && !overlay.app.goingHome
                                           && overlay.player.playlistPos < overlay.player.playlist.length - 1
         readonly property var entry: available ? overlay.player.playlist[overlay.player.playlistPos + 1] : null
         property real progress: 0
@@ -597,7 +616,7 @@ Item {
             property: "progress"
             from: 0; to: 1
             duration: 6000
-            onFinished: if (upNext.available) overlay.app.playNext()
+            onFinished: overlay.playUpNext()
         }
 
         Column {
@@ -621,7 +640,7 @@ Item {
                 clip: true
                 Rectangle { width: parent.width * upNext.progress; height: parent.height; color: theme.alpha(theme.accentText, 0.14) }
                 Text { id: playNow; anchors.centerIn: parent; text: qsTr("Play now  ↵"); color: theme.accentText; font.pixelSize: 12; font.weight: Font.DemiBold }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: overlay.app.playNext() }
+                MouseArea { anchors.fill: parent; enabled: upNext.visible; cursorShape: Qt.PointingHandCursor; onClicked: overlay.playUpNext() }
             }
             Rectangle {
                 width: cancelText.implicitWidth + 24; height: 30
@@ -629,7 +648,7 @@ Item {
                 color: cancelArea.containsMouse ? theme.alpha(theme.foreground, 0.1) : "transparent"
                 border.color: theme.alpha(theme.foreground, 0.16)
                 Text { id: cancelText; anchors.centerIn: parent; text: qsTr("Cancel"); color: theme.foreground; font.pixelSize: 12 }
-                MouseArea { id: cancelArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: overlay.upNextCancelled = true }
+                MouseArea { id: cancelArea; anchors.fill: parent; enabled: upNext.visible; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (upNext.available) overlay.upNextCancelled = true }
             }
         }
     }

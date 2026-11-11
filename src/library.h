@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QTimer>
 #include <QVariant>
 
@@ -45,6 +46,8 @@ public:
     Q_INVOKABLE QVariantMap expand(const QStringList &inputs) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE QString frameCaptureFile(const QString &title, double position) const;
+    // Where captures go; ~/Pictures/mpv-extended unless set (tests set it).
+    void setCaptureDirectory(const QString &directory) { m_captureDirectory = directory; }
     Q_INVOKABLE QString formatTime(double seconds) const { return format(seconds); }
     Q_INVOKABLE QString relativeTime(qint64 msecsSinceEpoch) const;
     Q_INVOKABLE QString languageName(const QString &code) const;
@@ -73,6 +76,8 @@ private:
     QString m_cacheDirectory;
     QHash<QString, Entry> m_entries;
     Tombstones m_forgotten;
+    mutable QSet<QString> m_capturesGiven;
+    QString m_captureDirectory;
     QTimer m_saveTimer;
     bool m_dirty = false;
 };

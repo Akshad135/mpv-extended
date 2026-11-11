@@ -11,8 +11,12 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTextStream>
+#include <QSocketNotifier>
 #include <QUrl>
 #include <algorithm>
+#include <csignal>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include "filepicker.h"
 #include "inhibitor.h"
@@ -21,6 +25,11 @@
 #include "theme.h"
 #include "thumbnailer.h"
 #include "translator.h"
+
+namespace {
+// Written by the signal handler, read by the event loop.
+int signalPipe[2] = {-1, -1};
+} // namespace
 
 int main(int argc, char *argv[]) {
     // mpv draws through OpenGL, so Qt Quick has to render with it too.
@@ -84,7 +93,30 @@ int main(int argc, char *argv[]) {
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;
-    inhibitor.setWindow(qobject_cast<QWindow *>(engine.rootObjects().first()));
+    auto *window = qobject_cast<QWindow *>(engine.rootObjects().first());
+    inhibitor.setWindow(window);
+
+    // Logging out or `kill` closes the window properly, so the position is
+    // saved just as when the window is closed by hand.
+    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, signalPipe) == 0) {
+        struct sigaction action {};
+        action.sa_handler = [](int) {
+            const char byte = 1;
+            [[maybe_unused]] auto written = ::write(signalPipe[0], &byte, 1);
+        };
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESTART;
+        for (int signal : {SIGTERM, SIGINT, SIGHUP})
+            sigaction(signal, &action, nullptr);
+        auto *notifier = new QSocketNotifier(signalPipe[1], QSocketNotifier::Read, &app);
+        QObject::connect(notifier, &QSocketNotifier::activated, &app, [notifier, window] {
+            notifier->setEnabled(false);
+            if (window)
+                window->close();
+            // In case closing is held up, quit regardless after a moment.
+            QTimer::singleShot(3000, qApp, &QCoreApplication::quit);
+        });
+    }
 
 #ifdef MPV_EXTENDED_DEV
     // Development aid, only in `bin/build CONFIG+=dev` builds: MPV_EXTENDED_GRAB=out.png saves the window after MPV_EXTENDED_GRAB_AFTER

@@ -7,6 +7,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QOpenGLFunctions>
 #include <clocale>
 #include <cmath>
@@ -223,6 +224,19 @@ MpvObject::MpvObject(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     for (const char *name : observed)
         mpv_observe_property(m_mpv, 0, name, MPV_FORMAT_NODE);
     mpv_hook_add(m_mpv, 0, "on_load", 50);
+
+    // Video needs Qt Quick on OpenGL. If it ended up on another backend (the
+    // software one, say, with no GL at all), the renderer is never made, so
+    // say so instead of leaving files waiting for it.
+    connect(this, &QQuickItem::windowChanged, this, [this](QQuickWindow *newWindow) {
+        if (!newWindow)
+            return;
+        connect(newWindow, &QQuickWindow::sceneGraphInitialized, this, [this] {
+            if (!m_ready && !m_renderFailed && window() &&
+                window()->rendererInterface()->graphicsApi() != QSGRendererInterface::OpenGL)
+                renderFailed();
+        }, Qt::QueuedConnection);
+    });
 
     mpv_set_wakeup_callback(
         m_mpv,

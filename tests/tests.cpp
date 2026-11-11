@@ -1,3 +1,4 @@
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -127,6 +128,33 @@ private slots:
         first.save();
         Library fresh(data.path(), cache.path());
         QCOMPARE(fresh.resumePosition("/films/x.mkv"), 700.0);
+    }
+
+    void newPlaysWinEvenIfTheClockWentBack()
+    {
+        QTemporaryDir data, cache;
+        const qint64 future = QDateTime::currentMSecsSinceEpoch() + 3600 * 1000;
+        touch(data.filePath("history.json"),
+              QString(R"({"version":1,"items":[{"path":"/films/a.mkv","title":"A","position":100,"duration":2400,"lastPlayed":%1}]})")
+                  .arg(future).toUtf8());
+        {
+            Library library(data.path(), cache.path());
+            library.update("/films/a.mkv", "A", 1500, 2400);
+            library.save();
+            QCOMPARE(library.resumePosition("/films/a.mkv"), 1500.0);
+        }
+        Library fresh(data.path(), cache.path());
+        QCOMPARE(fresh.resumePosition("/films/a.mkv"), 1500.0);
+    }
+
+    void capturesInTheSameSecondGetTheirOwnNames()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        library.setCaptureDirectory(data.filePath("captures"));
+        const QString first = library.frameCaptureFile("Film", 61);
+        const QString second = library.frameCaptureFile("Film", 61.5);
+        QVERIFY(first != second);
     }
 
     void unreadableHistoryIsKeptAside()

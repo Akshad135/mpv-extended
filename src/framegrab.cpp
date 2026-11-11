@@ -16,7 +16,10 @@ void grabFrameWithFfmpeg(QObject *owner, const QString &input, double position, 
     }
     // Written beside the target and renamed into place, so nothing ever
     // sees half a picture.
-    const QString partial = QString("%1.%2.part.jpg").arg(output).arg(QCoreApplication::applicationPid());
+    // Unique per process and per grab: two grabs of one file can overlap.
+    static int serial = 0;
+    const QString partial =
+        QString("%1.%2-%3.part.jpg").arg(output).arg(QCoreApplication::applicationPid()).arg(++serial);
     auto *process = new QProcess(owner);
     // QProcess waits for ffmpeg to exit before destroyed() fires, so a killed
     // run, or the app quitting mid-frame, leaves nothing behind.
