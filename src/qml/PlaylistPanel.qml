@@ -15,8 +15,9 @@ Rectangle {
     border.color: theme.alpha(theme.foreground, 0.12)
     visible: x < (parent ? parent.width : 0)
 
-    // Clicks on the panel's own surface stay here, not on the picture.
-    MouseArea { anchors.fill: parent }
+    // Clicks and the wheel on the panel stay here, not on the picture
+    // (where the wheel sets the volume), even when the list can't scroll.
+    MouseArea { anchors.fill: parent; onWheel: (wheel) => wheel.accepted = true }
 
     Item {
         id: header

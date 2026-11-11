@@ -609,7 +609,7 @@ Item {
         id: upNext
         // Clicks on the card itself never reach the picture (at the end of a
         // file that would restart it).
-        MouseArea { anchors.fill: parent; enabled: upNext.visible }
+        MouseArea { anchors.fill: parent }
         // Stays up while its own switch waits for the frame (upNextStarted,
         // inert), and goes for any other switch or a trip to the library.
         readonly property bool available: overlay.player.eof && overlay.hasPlaylist && !overlay.upNextCancelled
