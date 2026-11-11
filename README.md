@@ -81,6 +81,10 @@ rebuild after a Qt minor upgrade, as with other Qt apps from the AUR.
 History lives in `~/.local/share/mpv-extended/history.json`; frames are
 cached in `~/.cache/mpv-extended`.
 
+With hardware decoding (on by default), mpv can't copy the frame out for a
+capture, so Ctrl+S saves it with ffmpeg instead: the picture is exact, but
+without subtitles.
+
 ## Releasing
 
 1. Set the version in `mpv-extended.pro` and `pkgbuild/PKGBUILD`.

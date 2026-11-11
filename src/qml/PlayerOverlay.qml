@@ -34,6 +34,11 @@ Item {
     readonly property bool controlsShown: player.paused || idleTimer.running || menusOpen
                                           || dockHover.hovered || topHover.hovered || timeline.scrubbing
                                           || upNext.available
+    // Subtitles step up above the dock while it shows. mpv measures the
+    // margin in pixels of a 720-pixel-high window.
+    readonly property int subtitleMargin: controlsShown && height > 0
+                                          ? Math.min(600, Math.round((dock.height + 28) * 720 / height)) : 22
+    onSubtitleMarginChanged: player.set("sub-margin-y", subtitleMargin)
     readonly property var audioTracks: player.tracks.filter(t => t.type === "audio")
     readonly property var subtitleTracks: player.tracks.filter(t => t.type === "sub")
     readonly property bool hasPlaylist: player.playlist.length > 1
@@ -226,10 +231,14 @@ Item {
 
         HoverHandler { id: topHover }
 
+        // Taller than the bar, so the second line still reads on a
+        // bright frame.
         Rectangle {
-            anchors.fill: parent
+            width: parent.width
+            height: parent.height + 36
             gradient: Gradient {
-                GradientStop { position: 0; color: theme.alpha(theme.deep, 0.78) }
+                GradientStop { position: 0; color: theme.alpha(theme.deep, 0.85) }
+                GradientStop { position: 0.6; color: theme.alpha(theme.deep, 0.55) }
                 GradientStop { position: 1; color: "transparent" }
             }
         }

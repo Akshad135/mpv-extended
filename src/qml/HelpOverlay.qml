@@ -112,7 +112,9 @@ Rectangle {
                         Item {
                             required property var modelData
                             width: parent.width
-                            height: 24
+                            // Long descriptions (and translations) wrap
+                            // instead of being cut off.
+                            height: Math.max(24, description.implicitHeight + 6)
                             Rectangle {
                                 id: cap
                                 height: 22
@@ -130,14 +132,16 @@ Rectangle {
                                 }
                             }
                             Text {
+                                id: description
                                 anchors.left: parent.left
                                 anchors.leftMargin: 130
                                 anchors.right: parent.right
-                                anchors.verticalCenter: cap.verticalCenter
+                                anchors.top: cap.top
+                                anchors.topMargin: 3
                                 text: modelData[1]
                                 color: theme.foreground
                                 font.pixelSize: 13
-                                elide: Text.ElideRight
+                                wrapMode: Text.Wrap
                             }
                         }
                     }
