@@ -379,7 +379,7 @@ void MpvObject::loadFiles(const QStringList &files, int index) {
         return;
     // Without OpenGL, files still load: audio plays, and the window has
     // already said that video can't be shown (videoOutputFailed).
-    if (!m_ready) {
+    if (!m_ready && !m_renderFailed) {
         m_pendingFiles = files;
         m_pendingIndex = index;
         return;

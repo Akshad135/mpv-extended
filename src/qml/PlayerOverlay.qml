@@ -98,6 +98,13 @@ Item {
     }
     // The file after the one that just ended, by position, so repeats can't
     // skip ahead. Does nothing once Up next is cancelled or a switch began.
+    // Up next no longer drives: its card goes and the end-of-file choices
+    // (Watch again, Library) take over if the file stays.
+    function stepAsideUpNext() {
+        if (!upNextStarted) return
+        upNextStarted = false
+        upNextCancelled = true
+    }
     function playUpNext() {
         if (!upNext.available || upNextStarted) return
         upNext.startedEntry = upNext.entry
@@ -636,6 +643,8 @@ Item {
             property: "progress"
             from: 0; to: 1
             duration: 6000
+            // Waits while the queue or the shortcuts cover the card.
+            paused: running && (overlay.playlistOpen || overlay.app.helpVisible)
             onFinished: overlay.playUpNext()
         }
 

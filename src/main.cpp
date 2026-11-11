@@ -15,6 +15,8 @@
 #include <QUrl>
 #include <algorithm>
 #include <csignal>
+#include <cstdio>
+#include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -33,6 +35,21 @@ int signalPipe[2] = {-1, -1};
 
 int main(int argc, char *argv[]) {
     // mpv draws through OpenGL, so Qt Quick has to render with it too.
+    // Answered before any display is opened, so they work over SSH and in
+    // package builds too.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
+            std::fputs("Usage: mpv-extended [file|folder|url ...]\n\n"
+                       "Plays video and audio. A folder plays everything in it; a single file\n"
+                       "plays with the other files beside it queued up next.\n", stdout);
+            return 0;
+        }
+        if (std::strcmp(argv[i], "--version") == 0) {
+            std::fputs("mpv-extended " APP_VERSION "\n", stdout);
+            return 0;
+        }
+    }
+
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
     QGuiApplication app(argc, argv);
@@ -41,16 +58,6 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion(QStringLiteral(APP_VERSION));
 
     const QStringList args = app.arguments().mid(1);
-    if (args.contains("--help") || args.contains("-h")) {
-        QTextStream(stdout) << "Usage: mpv-extended [file|folder|url ...]\n\n"
-                               "Plays video and audio. A folder plays everything in it; a single file\n"
-                               "plays with the other files beside it queued up next.\n";
-        return 0;
-    }
-    if (args.contains("--version")) {
-        QTextStream(stdout) << "mpv-extended " << app.applicationVersion() << "\n";
-        return 0;
-    }
 
     // Matches the window to mpv-extended.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
@@ -101,11 +108,12 @@ int main(int argc, char *argv[]) {
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, signalPipe) == 0) {
         struct sigaction action {};
         action.sa_handler = [](int signal) {
-            // The first asks the window to close and save; a second one
-            // means it; the default action ends the process even if the
-            // window is stuck.
+            // The first asks the window to close and save. A second SIGTERM
+            // or SIGINT means it: the default action ends the process even
+            // if the window is stuck. SIGHUP never does, since closing a
+            // terminal sends it twice within milliseconds.
             static volatile sig_atomic_t received = 0;
-            if (received++) {
+            if (received++ && signal != SIGHUP) {
                 ::signal(signal, SIG_DFL);
                 ::raise(signal);
                 return;

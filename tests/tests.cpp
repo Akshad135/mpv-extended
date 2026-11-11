@@ -324,7 +324,9 @@ private slots:
     {
         QTemporaryDir dir;
         const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
-        touch(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
+        // Reads its answer, then lingers, so a refresh asked for meanwhile has
+        // to run again to see a newer answer.
+        touch(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\nsleep 0.3\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         touch(response, "{\"int\":0}");
 
@@ -333,6 +335,7 @@ private slots:
         // Asked again while a query is still running: it must run once more.
         theme.refreshRounding();
         QTRY_COMPARE(theme.radius(), 0);
+        QTest::qWait(150); // The running query has read its answer by now.
         touch(response, "{\"int\":6}");
         theme.refreshRounding();
         QTRY_COMPARE(theme.radius(), 6);

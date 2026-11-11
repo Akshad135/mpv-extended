@@ -141,7 +141,13 @@ ApplicationWindow {
 
     function playAt(index) {
         if (goingHome || index < 0 || index >= mpv.playlist.length) return
-        if (switchTarget >= 0) { switchTarget = index; return }
+        if (switchTarget >= 0) {
+            // Pointed elsewhere than the file Up next is starting: Up next
+            // steps aside and this choice wins.
+            if (overlay.upNextStarted && index !== mpv.playlistPos + 1) overlay.stepAsideUpNext()
+            switchTarget = index
+            return
+        }
         if (index === mpv.playlistPos) return
         switchTarget = index
         const serial = ++navSerial
@@ -150,6 +156,7 @@ ApplicationWindow {
             const target = switchTarget
             switchTarget = -1
             if (target >= 0 && target !== mpv.playlistPos) mpv.playIndex(target)
+            else overlay.stepAsideUpNext() // Ended up staying on this file.
         })
     }
     // When Up next is already starting the next file, N means that file:
