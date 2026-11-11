@@ -78,7 +78,7 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void playIndex(int index);
     // Writes the current frame to file in the background; screenshotFinished(tag, ok)
-    // reports the result. There is deliberately no waiting version:
+    // reports the result. If mpv can't, a local file's frame comes from ffmpeg. There is deliberately no waiting version:
     // blocking the GUI thread on mpv can deadlock with Qt's render thread.
     Q_INVOKABLE void screenshotTo(const QString &file, const QString &tag = {},
                                   bool withSubtitles = false);
@@ -120,7 +120,13 @@ private:
     mpv_handle *m_mpv = nullptr;
     std::shared_ptr<MpvCore> m_core;
     QHash<QString, QVariant> m_values;
-    QHash<quint64, QString> m_screenshots;
+    struct Screenshot {
+        QString tag;
+        QString file;
+        QString source;
+        double position = 0;
+    };
+    QHash<quint64, Screenshot> m_screenshots;
     quint64 m_nextReply = 1;
     QString m_loadingPath;
     bool m_ready = false;

@@ -7,6 +7,7 @@ TEMPLATE = app
 
 HEADERS += \
     src/filepicker.h \
+    src/framegrab.h \
     src/inhibitor.h \
     src/library.h \
     src/mpvobject.h \
@@ -17,6 +18,7 @@ HEADERS += \
 SOURCES += \
     src/main.cpp \
     src/filepicker.cpp \
+    src/framegrab.cpp \
     src/inhibitor.cpp \
     src/library.cpp \
     src/mpvobject.cpp \

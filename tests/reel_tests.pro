@@ -5,5 +5,5 @@ TEMPLATE = app
 
 INCLUDEPATH += ../src
 
-HEADERS += ../src/library.h ../src/theme.h ../src/thumbnailer.h ../src/translator.h
-SOURCES += reel_tests.cpp ../src/library.cpp ../src/theme.cpp ../src/thumbnailer.cpp ../src/translator.cpp
+HEADERS += ../src/framegrab.h ../src/library.h ../src/theme.h ../src/thumbnailer.h ../src/translator.h
+SOURCES += reel_tests.cpp ../src/framegrab.cpp ../src/library.cpp ../src/theme.cpp ../src/thumbnailer.cpp ../src/translator.cpp

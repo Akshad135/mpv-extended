@@ -1,9 +1,12 @@
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include "framegrab.h"
 #include "library.h"
 #include "theme.h"
 #include "thumbnailer.h"
@@ -195,6 +198,32 @@ private slots:
         QCOMPARE(Thumbnailer::frameCount(7200), 120);
         QCOMPARE(Thumbnailer::nearest({2, 9}, 7, 10), 9);
         QCOMPARE(Thumbnailer::nearest({}, 7, 10), -1);
+    }
+
+    void ffmpegGrabsAFrame()
+    {
+        const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+        if (ffmpeg.isEmpty())
+            QSKIP("ffmpeg isn't installed");
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("clip.mkv"), frame = dir.filePath("frame.jpg");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10",
+                                            "-t", "3", clip}), 0);
+        int result = -1;
+        QObject owner;
+        grabFrameWithFfmpeg(&owner, clip, 1.5, frame, [&](bool ok) { result = ok; });
+        QTRY_COMPARE_WITH_TIMEOUT(result, 1, 10000);
+        QVERIFY(QFileInfo(frame).size() > 0);
+        QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
+
+        result = -1;
+        grabFrameWithFfmpeg(&owner, dir.filePath("missing.mkv"), 1, frame, [&](bool ok) { result = ok; });
+        QCOMPARE(result, 0);
+        result = -1;
+        grabFrameWithFfmpeg(&owner, dir.filePath("frame.jpg"), 1, dir.filePath("not-a-video.jpg"),
+                            [&](bool ok) { result = ok; });
+        QTRY_COMPARE_WITH_TIMEOUT(result, 0, 10000);
+        QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
     }
 
     void themeFallsBack()

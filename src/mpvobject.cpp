@@ -1,6 +1,8 @@
 // The render setup follows mpv's own Qt Quick example (mpv-player/mpv-examples).
 #include "mpvobject.h"
 
+#include "framegrab.h"
+
 #include <QGuiApplication>
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
@@ -322,8 +324,17 @@ void MpvObject::handleEvent(mpv_event *event) {
         break;
     }
     case MPV_EVENT_COMMAND_REPLY: {
-        if (m_screenshots.contains(event->reply_userdata))
-            emit screenshotFinished(m_screenshots.take(event->reply_userdata), event->error >= 0);
+        if (!m_screenshots.contains(event->reply_userdata))
+            break;
+        const Screenshot shot = m_screenshots.take(event->reply_userdata);
+        if (event->error >= 0) {
+            emit screenshotFinished(shot.tag, true);
+        } else {
+            // mpv's software screenshot can't read frames kept on an NVIDIA
+            // GPU; ffmpeg reads the same moment from the file instead.
+            grabFrameWithFfmpeg(this, shot.source, shot.position, shot.file,
+                                [this, tag = shot.tag](bool ok) { emit screenshotFinished(tag, ok); });
+        }
         break;
     }
     case MPV_EVENT_LOG_MESSAGE: {
@@ -425,6 +436,6 @@ void MpvObject::playIndex(int index) {
 void MpvObject::screenshotTo(const QString &file, const QString &tag, bool withSubtitles) {
     const QList<QByteArray> args{"screenshot-to-file", file.toUtf8(), withSubtitles ? "subtitles" : "video"};
     const quint64 reply = m_nextReply++;
-    m_screenshots.insert(reply, tag);
+    m_screenshots.insert(reply, {tag, file, path(), position()});
     runCommand(m_mpv, args, reply);
 }
