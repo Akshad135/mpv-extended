@@ -5,3 +5,5 @@
 /pkgbuild/src/
 *.pkg.tar.*
 /pkgbuild/*.tar.gz
+/build-appimage/
+/dist/

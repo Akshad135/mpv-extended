@@ -25,7 +25,7 @@ Thumbnailer::Thumbnailer(const QString &cacheDirectory, const QString &ffmpeg, Q
       m_cacheDirectory(cacheDirectory.isEmpty()
                            ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/mpv-extended/frames"
                            : cacheDirectory),
-      m_ffmpeg(ffmpeg.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : ffmpeg) {
+      m_ffmpeg(ffmpeg.isEmpty() ? ffmpegProgram() : ffmpeg) {
     prune();
 }
 

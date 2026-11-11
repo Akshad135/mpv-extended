@@ -417,7 +417,9 @@ QStringList Library::readPlaylistFile(const QString &path) {
 }
 
 void Library::naturalSort(QStringList &paths) {
-    QCollator collator;
+    // The C locale (LANG unset, or C.UTF-8) compares code points and ignores
+    // numeric mode, which would put 10 before 2; English sorts numbers right.
+    QCollator collator(QLocale().language() == QLocale::C ? QLocale(QLocale::English) : QLocale());
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::sort(paths.begin(), paths.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });

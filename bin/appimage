@@ -1,0 +1,62 @@
+#!/bin/sh
+# Builds dist/mpv-extended-<version>-<arch>.AppImage: the app with its own Qt,
+# libmpv and ffmpeg, for distributions without a package. Build it on the
+# oldest system it should run on; the release workflow uses Ubuntu 24.04.
+#
+# Needs Qt 6 (qmake on PATH, or $QMAKE), libmpv, ffmpeg, wayland-protocols
+# and curl. linuxdeploy and its Qt plugin are downloaded on first use.
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+VERSION="$(sed -n 's/^VERSION = \([0-9.]*\).*/\1/p' "$ROOT/mpv-extended.pro")"
+ARCH="$(uname -m)"
+QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
+FFMPEG="$(command -v ffmpeg)"
+WORK="$ROOT/build-appimage"
+TOOLS="$WORK/tools"
+# linuxdeploy's last tagged release; its Qt plugin has none newer than
+# February 2025, too old for current Qt, so that one follows "continuous".
+LINUXDEPLOY_TAG=1-alpha-20251107-1
+QT_PLUGIN_TAG=continuous
+
+mkdir -p "$TOOLS"
+fetch() {
+  [ -x "$TOOLS/$2" ] && return
+  curl -fsSL -o "$TOOLS/$2.part" "https://github.com/linuxdeploy/$1/releases/download/$3/$2"
+  chmod +x "$TOOLS/$2.part"
+  mv "$TOOLS/$2.part" "$TOOLS/$2"
+}
+fetch linuxdeploy "linuxdeploy-$ARCH.AppImage" "$LINUXDEPLOY_TAG"
+fetch linuxdeploy-plugin-qt "linuxdeploy-plugin-qt-$ARCH.AppImage" "$QT_PLUGIN_TAG"
+
+mkdir -p "$WORK/build"
+cd "$WORK/build"
+"$QMAKE" "$ROOT/mpv-extended.pro"
+make -j"$(nproc)"
+
+cd "$WORK"
+rm -rf AppDir
+# No FUSE in containers and CI runners.
+export APPIMAGE_EXTRACT_AND_RUN=1
+export QMAKE
+export QML_SOURCES_PATHS="$ROOT/src/qml"
+# Wayland first-class, X11 (the default) as the fallback. The Wayland
+# platform plugin alone leaves out wayland-egl, which OpenGL needs; the
+# compositor module is the plugin's way of adding it.
+export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+export EXTRA_QT_MODULES="waylandcompositor"
+export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
+export LDAI_OUTPUT="mpv-extended-$VERSION-$ARCH.AppImage"
+# ffmpeg sits beside the app, where it looks first. VA-API comes from the
+# system: a bundled libva looks for drivers in Ubuntu's paths and rejects
+# drivers built for a newer libva, which would leave decoding on the CPU.
+"$TOOLS/linuxdeploy-$ARCH.AppImage" --appdir AppDir \
+  --executable build/mpv-extended --executable "$FFMPEG" \
+  --desktop-file "$ROOT/pkgbuild/mpv-extended.desktop" \
+  --icon-file "$ROOT/pkgbuild/mpv-extended.svg" \
+  --exclude-library 'libva*' \
+  --plugin qt --output appimage
+
+mkdir -p "$ROOT/dist"
+mv "$LDAI_OUTPUT" "$ROOT/dist/"
+echo "Built $ROOT/dist/$LDAI_OUTPUT"

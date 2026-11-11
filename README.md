@@ -59,7 +59,7 @@ It is an independent project built on libmpv, not part of mpv.
 
 ## Install
 
-On Arch or Omarchy:
+### Arch and Omarchy
 
 ```sh
 sudo pacman -S --needed git base-devel
@@ -71,6 +71,28 @@ bin/install          # builds the package and installs it with pacman (asks for 
 It then shows up in the app launcher, and `mpv-extended [file|folder|url]`
 works from a terminal.
 
+### Other distributions: AppImage
+
+Download `mpv-extended-<version>-x86_64.AppImage` from the
+[latest release](https://github.com/akshad135/mpv-extended/releases/latest),
+then:
+
+```sh
+chmod +x mpv-extended-*-x86_64.AppImage
+./mpv-extended-*-x86_64.AppImage ~/Videos
+```
+
+It carries its own Qt, libmpv, and ffmpeg, and runs on Ubuntu 24.04 and
+distributions at least as new (glibc 2.39). From the system it uses:
+
+- the graphics drivers, and libva for hardware decoding;
+- an xdg-desktop-portal with a file chooser, for the Open dialogs;
+- `yt-dlp`, if installed, to play links.
+
+Each release lists its SHA-256 sums in a `.sha256` file beside the AppImage.
+The AppImage isn't added to the app launcher by itself; a tool such as
+Gear Lever or AppImageLauncher does that.
+
 ## Build
 
 Needs `base-devel qt6-base qt6-declarative mpv ffmpeg wayland-protocols`.
@@ -80,6 +102,7 @@ chooser, such as `xdg-desktop-portal-gtk` (Omarchy has it).
 ```sh
 bin/build                   # build/mpv-extended (CONFIG+=dev adds a screenshot hook for testing)
 bin/test                    # unit tests, offscreen
+bin/appimage                # dist/mpv-extended-<version>-<arch>.AppImage
 build/mpv-extended ~/Videos # play a folder
 ```
 
@@ -96,8 +119,13 @@ without subtitles.
 ## Releasing
 
 1. Set the version in `mpv-extended.pro` and `pkgbuild/PKGBUILD`.
-2. Tag `v<version>` and push the tag to GitHub.
+2. Tag `v<version>` and push the tag to GitHub. The Build workflow runs the
+   tests, builds the AppImage, and publishes a GitHub release with it. The
+   workflow stops if the tag and the two versions don't match.
 3. In `pkgbuild/`, run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`.
+
+Pushes to main and pull requests run the same workflow without the release
+step; the AppImage it builds is kept as a downloadable artifact of the run.
 
 ## License
 
