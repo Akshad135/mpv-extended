@@ -14,9 +14,9 @@ It is an independent project built on libmpv, not part of mpv.
 - **Queues itself.** Open one episode and the rest of the folder is queued in
   natural order (2 before 10). At the end, an "Up next" card counts down.
 - **Playlists.** Open a folder, or an .m3u, .m3u8, or .pls file, and it stays
-  in the library as a playlist that picks up at the next unwatched file. A
-  folder is scanned again each time, so new episodes show up. Any queue can
-  be saved as a playlist from the queue panel.
+  in the library as a playlist that picks up after the last file you
+  watched. A folder is scanned again each time, so new episodes show up. Any
+  queue can be saved as a playlist from the queue panel.
 - **Timeline previews.** Hover the seek bar to see the frame, the time, and
   the chapter.
 - **Tracks.** Pick audio and subtitle tracks by language, or load a
@@ -82,8 +82,8 @@ build/mpv-extended ~/Videos # play a folder
 It uses one Qt platform header (to keep the screen awake on Wayland), so
 rebuild after a Qt minor upgrade, as with other Qt apps from the AUR.
 
-History lives in `~/.local/share/mpv-extended/history.json`; frames are
-cached in `~/.cache/mpv-extended`.
+History lives in `~/.local/share/mpv-extended/history.json` and playlists in
+`playlists.json` beside it; frames are cached in `~/.cache/mpv-extended`.
 
 With hardware decoding (on by default), mpv can't copy the frame out for a
 capture, so Ctrl+S saves it with ffmpeg instead: the picture is exact, but

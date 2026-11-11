@@ -88,8 +88,11 @@ bool Playlists::change(const std::function<void(QList<Item> &)> &edit) {
     }
     edit(items);
     std::sort(items.begin(), items.end(), [](const Item &a, const Item &b) { return a.lastOpened > b.lastOpened; });
-    while (items.size() > playlistLimit)
-        items.removeLast();
+    // The least recently opened folders and files go first; a queue saved by
+    // name is never dropped on its own.
+    for (int i = items.size() - 1; items.size() > playlistLimit && i >= 0; --i)
+        if (items[i].kind != "saved")
+            items.removeAt(i);
 
     QJsonArray array;
     for (const auto &item : std::as_const(items))
@@ -120,7 +123,7 @@ QString Playlists::remember(const QVariantMap &collection, const QStringList &fi
     // One playlist per folder or file, however often it's opened.
     const QString id = kind + ":" + source;
     const QString name = collection.value("name").toString();
-    change([&](QList<Item> &items) {
+    const bool ok = change([&](QList<Item> &items) {
         auto it = std::find_if(items.begin(), items.end(), [&](const Item &i) { return i.id == id; });
         if (it == items.end())
             it = items.insert(items.end(), Item{id, name, kind, source, {}, 0});
@@ -128,7 +131,7 @@ QString Playlists::remember(const QVariantMap &collection, const QStringList &fi
         it->files = files.mid(0, filesPerPlaylist);
         it->lastOpened = QDateTime::currentMSecsSinceEpoch();
     });
-    return id;
+    return ok ? id : QString();
 }
 
 QString Playlists::save(const QString &name, const QStringList &files) {
@@ -138,11 +141,11 @@ QString Playlists::save(const QString &name, const QStringList &files) {
                            .arg(QDateTime::currentMSecsSinceEpoch())
                            .arg(QRandomGenerator::global()->generate(), 8, 16, QChar('0'));
     const QString trimmed = name.simplified();
-    change([&](QList<Item> &items) {
+    const bool ok = change([&](QList<Item> &items) {
         items.append(Item{id, trimmed.isEmpty() ? tr("Playlist") : trimmed, "saved", {},
                           files.mid(0, filesPerPlaylist), QDateTime::currentMSecsSinceEpoch()});
     });
-    return id;
+    return ok ? id : QString();
 }
 
 void Playlists::forget(const QString &id) {

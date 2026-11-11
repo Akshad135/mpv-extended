@@ -272,6 +272,19 @@ private slots:
         QCOMPARE(collection.value("kind").toString(), QString("file"));
         QCOMPARE(collection.value("name").toString(), QString("Watch list"));
 
+        // "Show/" and "Show" are one folder, and one playlist.
+        QCOMPARE(Library().expand({dir.path() + "/"}).value("collection").toMap().value("source").toString(),
+                 QDir::cleanPath(dir.path()));
+
+        // A colon doesn't make a link; Windows backslashes and Latin-1 work.
+        QFile old(dir.filePath("old.m3u"));
+        QVERIFY(old.open(QIODevice::WriteOnly));
+        old.write("Ep1:Pilot.mkv\nMusic\\Artist\\a.mp3\nCaf\xE9.mkv\n");
+        old.close();
+        QCOMPARE(Library::readPlaylistFile(old.fileName()),
+                 (QStringList{dir.filePath("Ep1:Pilot.mkv"), dir.filePath("Music/Artist/a.mp3"),
+                              dir.filePath(QString::fromUtf8("Caf\xC3\xA9.mkv"))}));
+
         QFile pls(dir.filePath("radio.pls"));
         QVERIFY(pls.open(QIODevice::WriteOnly));
         pls.write("[playlist]\nFile1=http://radio.example/stream\nTitle1=Radio\nfile2=b.mp3\nNumberOfEntries=2\n");
@@ -341,6 +354,20 @@ private slots:
         QVERIFY(QDir(media.path()).removeRecursively());
         QVERIFY(first.open(id).value("files").toStringList().isEmpty());
         QVERIFY(!first.all().first().toMap().value("available").toBool());
+    }
+
+    void savedPlaylistsOutlastTheCap()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QString saved = playlists.save("Keep", {"/x/a.mkv"});
+        for (int i = 0; i < 105; ++i)
+            QVERIFY(!playlists.remember({{"kind", "folder"}, {"source", QString("/f/%1").arg(i)}, {"name", "f"}},
+                                        {"/f/a.mkv"}).isEmpty());
+        const QVariantList all = playlists.all();
+        QCOMPARE(all.size(), 100);
+        QVERIFY(std::any_of(all.cbegin(), all.cend(), [&](const QVariant &v) { return v.toMap().value("id") == saved; }));
     }
 
     void linksPassThrough()

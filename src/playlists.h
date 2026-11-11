@@ -33,9 +33,11 @@ public:
     QVariantList all() const;
 
     // Keeps an opened folder or playlist file ({kind, source, name}, from
-    // Library::expand) with its files, and returns its id.
+    // Library::expand) with its files, and returns its id (empty if it
+    // couldn't be saved).
     Q_INVOKABLE QString remember(const QVariantMap &collection, const QStringList &files);
-    // Keeps a queue under a name, and returns its id.
+    // Keeps a queue under a name, and returns its id (empty if it couldn't
+    // be saved).
     Q_INVOKABLE QString save(const QString &name, const QStringList &files);
     Q_INVOKABLE void forget(const QString &id);
     // What to play: {files, index}, starting where the history says to. A

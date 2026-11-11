@@ -349,6 +349,7 @@ ApplicationWindow {
         }
         function accept() {
             if (playlists.save(nameField.text, files)) win.toast("playlist", qsTr("Saved to the library"))
+            else win.showError(qsTr("Couldn't save the playlist."))
             close()
         }
         anchors.centerIn: parent
@@ -405,15 +406,15 @@ ApplicationWindow {
     }
 
     // Shortcuts. The player's are off in the library, where arrows move the
-    // selection instead.
-    Shortcut { sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.close() }
+    // selection instead. All but Esc rest while a playlist is being named.
+    Shortcut { enabled: !saveDialog.opened; sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { enabled: !saveDialog.opened; sequence: "Q"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.close() }
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.handleEscape() }
-    Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
-    Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
-    Shortcut { sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
-    Shortcut { sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
-    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
+    Shortcut { enabled: !saveDialog.opened; sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { enabled: !saveDialog.opened; sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
+    Shortcut { enabled: !saveDialog.opened; sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
+    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
 
     Shortcut { enabled: win.playerKeys; sequences: ["Space", "K"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.togglePause() }
     Shortcut { enabled: win.playerKeys; sequence: "Left"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.seekBy(-5) }

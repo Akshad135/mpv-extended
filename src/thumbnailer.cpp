@@ -134,7 +134,12 @@ void Thumbnailer::pump() {
         const QString target = QString("%1/%2.jpg").arg(m_directory).arg(index);
         // Unique per process, so two windows previewing the same file
         // never write into each other's partial frame.
-        const QString partial = QString("%1.%2.part.jpg").arg(target).arg(QCoreApplication::applicationPid());
+        // The retry gets its own name: the failed run's cleanup may still
+        // be pending.
+        const QString partial = QString("%1.%2%3.part.jpg")
+                                    .arg(target)
+                                    .arg(QCoreApplication::applicationPid())
+                                    .arg(m_slow.contains(index) ? "-retry" : "");
         const double at = (index + .5) / m_count * m_duration;
 
         auto *process = new QProcess(this);

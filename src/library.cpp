@@ -16,6 +16,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QStringDecoder>
 #include <QUrl>
 #include <algorithm>
 
@@ -34,11 +35,12 @@ constexpr qint64 tombstoneLifetime = 30LL * 24 * 3600 * 1000;
 
 QString localPath(const QString &input) {
     const QUrl url(input);
+    // Cleaned, so "Show/" and "Show" are one folder (and one playlist).
     if (url.isLocalFile())
-        return url.toLocalFile();
+        return QDir::cleanPath(url.toLocalFile());
     if (url.scheme().size() > 1) // http, ytdl, and anything else mpv opens itself
         return input;
-    return QFileInfo(input).absoluteFilePath();
+    return QDir::cleanPath(QFileInfo(input).absoluteFilePath());
 }
 
 } // namespace
@@ -367,17 +369,28 @@ bool Library::isPlaylistFile(const QString &path) {
 
 QStringList Library::readPlaylistFile(const QString &path) {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    // Bounded, so a huge or bogus file can't stall the window.
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024 * 1024)
         return {};
+    const QByteArray bytes = file.readAll();
+    // .m3u8 is UTF-8; an old .m3u may be Latin-1, which isn't valid UTF-8.
+    QStringDecoder utf8(QStringDecoder::Utf8);
+    QString text = utf8.decode(bytes);
+    if (utf8.hasError())
+        text = QString::fromLatin1(bytes);
+    if (text.startsWith(QChar(0xFEFF)))
+        text.remove(0, 1);
     const QDir base = QFileInfo(path).dir();
     const bool pls = QFileInfo(path).suffix().compare("pls", Qt::CaseInsensitive) == 0;
     static const QRegularExpression plsEntry("^File\\d+=(.*)$", QRegularExpression::CaseInsensitiveOption);
+    // A link has "scheme://"; "Ep1:Pilot.mkv" is a file name.
+    static const QRegularExpression link("^[a-z][a-z0-9+.-]*://", QRegularExpression::CaseInsensitiveOption);
     QStringList files;
-    // Bounded, so a huge or bogus file can't stall the window.
-    while (!file.atEnd() && files.size() < 5000) {
-        QString line = QString::fromUtf8(file.readLine()).trimmed();
-        if (line.startsWith(QChar(0xFEFF)))
-            line.remove(0, 1);
+    const QStringList lines = text.split('\n');
+    for (QString line : lines) {
+        if (files.size() >= 5000)
+            break;
+        line = line.trimmed();
         if (pls) {
             const auto match = plsEntry.match(line);
             if (!match.hasMatch())
@@ -388,13 +401,16 @@ QStringList Library::readPlaylistFile(const QString &path) {
         }
         if (line.isEmpty())
             continue;
-        const QUrl url(line);
-        if (url.isLocalFile())
-            files.append(url.toLocalFile());
-        else if (url.scheme().size() > 1) // a link; mpv opens it
-            files.append(line);
-        else
+        if (line.startsWith("file:", Qt::CaseInsensitive)) {
+            files.append(QUrl(line).toLocalFile());
+        } else if (link.match(line).hasMatch()) {
+            files.append(line); // mpv opens links itself
+        } else {
+            // Playlists made on Windows separate folders with backslashes.
+            if (!line.contains('/'))
+                line.replace('\\', '/');
             files.append(QDir::cleanPath(base.absoluteFilePath(line)));
+        }
     }
     return files;
 }
