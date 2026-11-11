@@ -16,6 +16,7 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QStringDecoder>
 #include <QUrl>
 #include <algorithm>
 
@@ -23,6 +24,7 @@ namespace {
 
 const QStringList videoExtensions{"mkv", "mp4", "m4v", "webm", "avi", "mov", "wmv", "flv", "ts", "m2ts",
                                   "mts", "mpg", "mpeg", "ogv", "3gp", "vob", "divx", "rmvb", "asf"};
+const QStringList playlistExtensions{"m3u", "m3u8", "pls"};
 const QStringList audioExtensions{"mp3", "flac", "ogg", "oga", "opus", "m4a", "aac", "wav", "wv", "ape",
                                   "alac", "aiff", "wma", "mka"};
 
@@ -33,11 +35,12 @@ constexpr qint64 tombstoneLifetime = 30LL * 24 * 3600 * 1000;
 
 QString localPath(const QString &input) {
     const QUrl url(input);
+    // Cleaned, so "Show/" and "Show" are one folder (and one playlist).
     if (url.isLocalFile())
-        return url.toLocalFile();
+        return QDir::cleanPath(url.toLocalFile());
     if (url.scheme().size() > 1) // http, ytdl, and anything else mpv opens itself
         return input;
-    return QFileInfo(input).absoluteFilePath();
+    return QDir::cleanPath(QFileInfo(input).absoluteFilePath());
 }
 
 } // namespace
@@ -286,11 +289,28 @@ void Library::thumbnailUpdated(const QString &path) {
     touch();
 }
 
+bool Library::lookup(const QString &path, Entry *entry) const {
+    const auto it = m_entries.constFind(path);
+    if (it == m_entries.constEnd())
+        return false;
+    *entry = *it;
+    return true;
+}
+
+QString Library::thumbnailUrl(const QString &path) const {
+    const auto it = m_entries.constFind(path);
+    if (it == m_entries.constEnd() || it->thumbnailStamp <= 0)
+        return {};
+    const QString thumb = thumbnailFile(path);
+    if (!QFileInfo::exists(thumb))
+        return {};
+    // The stamp in the query makes the image reload after a new frame.
+    return QUrl::fromLocalFile(thumb).toString() + "?v=" + QString::number(it->thumbnailStamp);
+}
+
 QVariantMap Library::toVariant(const Entry &e) const {
     const QFileInfo info(e.path);
     const bool local = info.isAbsolute() && !e.path.contains("://");
-    const QString thumb = thumbnailFile(e.path);
-    const bool hasThumb = e.thumbnailStamp > 0 && QFileInfo::exists(thumb);
     QString title = e.title;
     if (title.isEmpty() || (local && title == info.fileName()))
         title = local ? info.completeBaseName() : e.path;
@@ -305,9 +325,7 @@ QVariantMap Library::toVariant(const Entry &e) const {
         {"finished", e.finished},
         {"lastPlayed", e.lastPlayed},
         {"available", !local || info.exists()},
-        // The stamp in the query makes the image reload after a new frame.
-        {"thumbnail", hasThumb ? QUrl::fromLocalFile(thumb).toString() + "?v=" + QString::number(e.thumbnailStamp)
-                               : QString()},
+        {"thumbnail", thumbnailUrl(e.path)},
         {"kind", local ? kindOf(e.path) : QString("video")},
     };
 }
@@ -345,6 +363,59 @@ QString Library::kindOf(const QString &path) {
     return {};
 }
 
+bool Library::isPlaylistFile(const QString &path) {
+    return playlistExtensions.contains(QFileInfo(path).suffix().toLower());
+}
+
+QStringList Library::readPlaylistFile(const QString &path) {
+    QFile file(path);
+    // Bounded, so a huge or bogus file can't stall the window.
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024 * 1024)
+        return {};
+    const QByteArray bytes = file.readAll();
+    // .m3u8 is UTF-8; an old .m3u may be Latin-1, which isn't valid UTF-8.
+    QStringDecoder utf8(QStringDecoder::Utf8);
+    QString text = utf8.decode(bytes);
+    if (utf8.hasError())
+        text = QString::fromLatin1(bytes);
+    if (text.startsWith(QChar(0xFEFF)))
+        text.remove(0, 1);
+    const QDir base = QFileInfo(path).dir();
+    const bool pls = QFileInfo(path).suffix().compare("pls", Qt::CaseInsensitive) == 0;
+    static const QRegularExpression plsEntry("^File\\d+=(.*)$", QRegularExpression::CaseInsensitiveOption);
+    // A link has "scheme://"; "Ep1:Pilot.mkv" is a file name.
+    static const QRegularExpression link("^[a-z][a-z0-9+.-]*://", QRegularExpression::CaseInsensitiveOption);
+    QStringList files;
+    const QStringList lines = text.split('\n');
+    for (QString line : lines) {
+        if (files.size() >= 5000)
+            break;
+        line = line.trimmed();
+        if (pls) {
+            const auto match = plsEntry.match(line);
+            if (!match.hasMatch())
+                continue;
+            line = match.captured(1).trimmed();
+        } else if (line.isEmpty() || line.startsWith('#')) {
+            continue;
+        }
+        if (line.isEmpty())
+            continue;
+        if (line.startsWith("file:", Qt::CaseInsensitive)) {
+            // "file:track.mp3" is relative to the playlist, like a plain path.
+            files.append(QDir::cleanPath(base.absoluteFilePath(QUrl(line).toLocalFile())));
+        } else if (link.match(line).hasMatch()) {
+            files.append(line); // mpv opens links itself
+        } else {
+            // Playlists made on Windows separate folders with backslashes.
+            if (!line.contains('/'))
+                line.replace('\\', '/');
+            files.append(QDir::cleanPath(base.absoluteFilePath(line)));
+        }
+    }
+    return files;
+}
+
 void Library::naturalSort(QStringList &paths) {
     QCollator collator;
     collator.setNumericMode(true);
@@ -372,11 +443,16 @@ QStringList Library::mediaIn(const QString &directory) {
 QVariantMap Library::expand(const QStringList &inputs) const {
     QStringList files;
     int index = 0;
+    QVariantMap collection;
     if (inputs.size() == 1) {
         const QString path = localPath(inputs.first());
         const QFileInfo info(path);
         if (info.isDir()) {
             files = mediaIn(path);
+            collection = {{"kind", "folder"}, {"source", info.absoluteFilePath()}, {"name", info.fileName()}};
+        } else if (info.isFile() && isPlaylistFile(path)) {
+            files = readPlaylistFile(path);
+            collection = {{"kind", "file"}, {"source", info.absoluteFilePath()}, {"name", info.completeBaseName()}};
         } else if (info.isFile()) {
             const QString kind = kindOf(path);
             if (!kind.isEmpty()) {
@@ -401,11 +477,31 @@ QVariantMap Library::expand(const QStringList &inputs) const {
             const QString path = localPath(input);
             if (QFileInfo(path).isDir())
                 files += mediaIn(path);
+            else if (QFileInfo(path).isFile() && isPlaylistFile(path))
+                files += readPlaylistFile(path);
             else if (!path.isEmpty())
                 files.append(path);
         }
     }
-    return {{"files", files}, {"index", index}};
+    QVariantMap result{{"files", files}, {"index", index}};
+    if (!collection.isEmpty() && !files.isEmpty())
+        result.insert("collection", collection);
+    return result;
+}
+
+QStringList Library::collect(const QStringList &inputs) const {
+    QStringList files;
+    for (const auto &input : inputs) {
+        const QString path = localPath(input);
+        const QFileInfo info(path);
+        if (info.isDir())
+            files += mediaIn(path);
+        else if (info.isFile() && isPlaylistFile(path))
+            files += readPlaylistFile(path);
+        else if (!path.isEmpty())
+            files.append(path);
+    }
+    return files;
 }
 
 QString Library::clipboardText() const {

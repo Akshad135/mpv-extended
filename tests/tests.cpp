@@ -1,14 +1,23 @@
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
+#include <QMimeData>
 #include <QProcess>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
 #include "framegrab.h"
 #include "library.h"
+#include "playlists.h"
 #include "theme.h"
 #include "thumbnailer.h"
 #include "translator.h"
@@ -248,6 +257,379 @@ private slots:
         QCOMPARE(files.size(), 2);
     }
 
+    void folderAndPlaylistFilesBecomePlaylists()
+    {
+        QTemporaryDir dir;
+        touch(dir.filePath("a.mkv"));
+        QVariantMap result = Library().expand({dir.path()});
+        QCOMPARE(result.value("collection").toMap().value("kind").toString(), QString("folder"));
+        // A single episode only queues its siblings; it's not a playlist.
+        QVERIFY(!Library().expand({dir.filePath("a.mkv")}).contains("collection"));
+
+        QFile m3u(dir.filePath("Watch list.m3u8"));
+        QVERIFY(m3u.open(QIODevice::WriteOnly));
+        m3u.write("\xEF\xBB\xBF#EXTM3U\n#EXTINF:10,First\nShow/one.mkv\n\n/abs/two.mkv\r\n"
+                  "file:///abs/three%20x.mkv\nhttps://example.com/live.m3u8\n");
+        m3u.close();
+        result = Library().expand({m3u.fileName()});
+        QCOMPARE(result.value("files").toStringList(),
+                 (QStringList{dir.filePath("Show/one.mkv"), "/abs/two.mkv", "/abs/three x.mkv",
+                              "https://example.com/live.m3u8"}));
+        const QVariantMap collection = result.value("collection").toMap();
+        QCOMPARE(collection.value("kind").toString(), QString("file"));
+        QCOMPARE(collection.value("name").toString(), QString("Watch list"));
+
+        // "Show/" and "Show" are one folder, and one playlist.
+        QCOMPARE(Library().expand({dir.path() + "/"}).value("collection").toMap().value("source").toString(),
+                 QDir::cleanPath(dir.path()));
+
+        // A colon doesn't make a link; Windows backslashes and Latin-1 work.
+        QFile old(dir.filePath("old.m3u"));
+        QVERIFY(old.open(QIODevice::WriteOnly));
+        old.write("Ep1:Pilot.mkv\nMusic\\Artist\\a.mp3\nCaf\xE9.mkv\nfile:track.mp3\n");
+        old.close();
+        QCOMPARE(Library::readPlaylistFile(old.fileName()),
+                 (QStringList{dir.filePath("Ep1:Pilot.mkv"), dir.filePath("Music/Artist/a.mp3"),
+                              dir.filePath(QString::fromUtf8("Caf\xC3\xA9.mkv")), dir.filePath("track.mp3")}));
+
+        QFile pls(dir.filePath("radio.pls"));
+        QVERIFY(pls.open(QIODevice::WriteOnly));
+        pls.write("[playlist]\nFile1=http://radio.example/stream\nTitle1=Radio\nfile2=b.mp3\nNumberOfEntries=2\n");
+        pls.close();
+        QCOMPARE(Library::readPlaylistFile(pls.fileName()),
+                 (QStringList{"http://radio.example/stream", dir.filePath("b.mp3")}));
+    }
+
+    void playlistsPickUpWhereTheyWereLeft()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        const QStringList files{"/s/e1.mkv", "/s/e2.mkv", "/s/e3.mkv"};
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+        library.update("/s/e1.mkv", "", 1500, 1500); // finished
+        QCOMPARE(Playlists::startIndex(files, &library), 1);
+        QTest::qSleep(3); // Plays a few milliseconds apart, as in life.
+        library.update("/s/e2.mkv", "", 300, 1500); // halfway
+        QCOMPARE(Playlists::startIndex(files, &library), 1);
+        QTest::qSleep(3);
+        library.update("/s/e3.mkv", "", 1500, 1500); // the end, so from the top
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+        QTest::qSleep(3);
+        library.update("/s/e1.mkv", "", 900, 1500); // rewatching the first
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+    }
+
+    void playlistsAreKeptAcrossWindows()
+    {
+        QTemporaryDir data, cache, media;
+        touch(media.filePath("e1.mkv"));
+        touch(media.filePath("e2.mkv"));
+        Library library(data.path(), cache.path());
+        Playlists first(&library, data.path()), second(&library, data.path());
+
+        const QVariantMap folder = library.expand({media.path()});
+        const QString id = first.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        // Opening the same folder again keeps one playlist.
+        QCOMPARE(first.remember(folder.value("collection").toMap(), folder.value("files").toStringList()), id);
+        // The other window hasn't read it yet, and saves its own: both stay.
+        QTest::qSleep(3);
+        const QString saved = second.save("  Friday   night ", {"/x/a.mkv", "/x/b.mkv"});
+        QCOMPARE(second.all().size(), 2);
+        first.refresh();
+        QCOMPARE(first.all().size(), 2);
+        const QVariantMap mine = first.all().first().toMap();
+        QCOMPARE(mine.value("name").toString(), QString("Friday night"));
+        QCOMPARE(mine.value("kind").toString(), QString("saved"));
+        QCOMPARE(mine.value("count").toInt(), 2);
+
+        // A folder is scanned again when opened: new episodes show up.
+        touch(media.filePath("e3.mkv"));
+        library.update(media.filePath("e1.mkv"), "", 1500, 1500);
+        QTest::qSleep(3);
+        const QVariantMap opened = first.open(id);
+        QCOMPARE(opened.value("files").toStringList().size(), 3);
+        QCOMPARE(opened.value("index").toInt(), 1);
+        const QVariantMap card = first.all().first().toMap(); // opened last, so first
+        QCOMPARE(card.value("id").toString(), id);
+        QCOMPARE(card.value("watched").toInt(), 1);
+        QCOMPARE(card.value("nextTitle").toString(), QString("e2"));
+
+        second.forget(saved);
+        first.refresh();
+        QCOMPARE(first.all().size(), 1);
+        // A folder that's gone opens nothing.
+        QVERIFY(QDir(media.path()).removeRecursively());
+        QVERIFY(first.open(id).value("files").toStringList().isEmpty());
+        QVERIFY(!first.all().first().toMap().value("available").toBool());
+    }
+
+    void openingKeepsAnotherWindowsEdits()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        Playlists first(&library, data.path()), second(&library, data.path());
+        const QString id = first.save("Mix", {"/m/a.mkv", "/m/b.mkv"});
+        second.refresh();
+        QVERIFY(!second.setFiles(id, {"/m/a.mkv", "/m/b.mkv", "/m/a.mkv", "/m/d.mkv"}).isEmpty());
+        // The first window still holds two files, and opens the playlist.
+        const QVariantMap opened = first.open(id);
+        QCOMPARE(opened.value("files").toStringList().size(), 4);
+        second.refresh();
+        QCOMPARE(second.find(id).value("count").toInt(), 4);
+        // A playlist made in the other window opens without a refresh.
+        const QString fresh = second.save("Fresh", {"/m/f.mkv"});
+        QCOMPARE(first.open(fresh).value("files").toStringList(), QStringList{"/m/f.mkv"});
+        // A file listed twice plays from the copy that was picked.
+        QCOMPARE(first.open(id, "/m/a.mkv", 2).value("index").toInt(), 2);
+        QCOMPARE(first.open(id, "/m/a.mkv").value("index").toInt(), 0);
+    }
+
+    void savedPlaylistsOutlastTheCap()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QString saved = playlists.save("Keep", {"/x/a.mkv"});
+        for (int i = 0; i < 105; ++i)
+            QVERIFY(!playlists.remember({{"kind", "folder"}, {"source", QString("/f/%1").arg(i)}, {"name", "f"}},
+                                        {"/f/a.mkv"}).isEmpty());
+        const QVariantList all = playlists.all();
+        QCOMPARE(all.size(), 100);
+        QVERIFY(std::any_of(all.cbegin(), all.cend(), [&](const QVariant &v) { return v.toMap().value("id") == saved; }));
+    }
+
+    void playlistEditorReorders()
+    {
+        QTemporaryDir data, cache, theme;
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QString id = playlists.save("Mix", {"/m/a.mkv", "/m/b.mkv", "/m/c.mkv", "/m/d.mkv"});
+        Theme colors(theme.path());
+        QObject picker;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &colors);
+        engine.rootContext()->setContextProperty("library", &library);
+        engine.rootContext()->setContextProperty("playlists", &playlists);
+        engine.rootContext()->setContextProperty("picker", &picker);
+        QQmlComponent component(&engine);
+        component.setData(QString("import QtQuick\n"
+                                  "Item {\n"
+                                  "    width: 900; height: 600\n"
+                                  "    property var played: []\n"
+                                  "    property alias editor: editor\n"
+                                  "    QtObject { id: app\n"
+                                  "        function showError(text) {}\n"
+                                  "        function toast(icon, text) {}\n"
+                                  "        function openPlaylist(id, path) { played = played.concat([path]) } }\n"
+                                  "    PlaylistEditor { id: editor; anchors.fill: parent; app: app; playlistId: \"%1\" }\n"
+                                  "}\n").arg(id).toUtf8(),
+                          QUrl("qrc:/editor-test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(900, 600);
+        qobject_cast<QQuickItem *>(root.get())->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto order = [&] {
+            QStringList names;
+            for (const auto &entry : playlists.entries(playlists.all().first().toMap().value("id").toString()))
+                names.append(QFileInfo(entry.toMap().value("path").toString()).baseName());
+            return names.join("");
+        };
+
+        // Dragging the first row's grip down two rows.
+        // Delegates hang off the visual tree, not the object tree.
+        std::function<QQuickItem *(QQuickItem *, const QString &)> find = [&](QQuickItem *item, const QString &name) {
+            if (item->objectName() == name)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, name))
+                    return found;
+            return static_cast<QQuickItem *>(nullptr);
+        };
+        QQuickItem *grip = nullptr;
+        QTRY_VERIFY((grip = find(window.contentItem(), "grip0")));
+        const QPoint start = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2)).toPoint();
+        QTest::mousePress(&window, Qt::LeftButton, {}, start);
+        for (int dy = 4; dy <= 54 * 2 + 10; dy += 4) {
+            QTest::mouseMove(&window, start + QPoint(0, dy));
+            QTest::qWait(5);
+        }
+        QTest::mouseRelease(&window, Qt::LeftButton, {}, start + QPoint(0, 54 * 2 + 10));
+        QTRY_COMPARE(order(), QString("bcad"));
+
+        // A file dragged in from outside passes over the rows quietly.
+        {
+            QMimeData mime;
+            mime.setUrls({QUrl::fromLocalFile("/m/new.mkv")});
+            const QPoint over = grip->mapToScene(QPointF(200, 27)).toPoint();
+            QDragEnterEvent enter(over, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+            QTest::failOnWarning(QRegularExpression(".*TypeError.*"));
+            QCoreApplication::sendEvent(&window, &enter);
+            for (int dy = 0; dy < 120; dy += 10) {
+                QDragMoveEvent move(over + QPoint(0, dy), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(&window, &move);
+            }
+            QDragLeaveEvent leave;
+            QCoreApplication::sendEvent(&window, &leave);
+            QCOMPARE(order(), QString("bcad"));
+        }
+
+        // Keys: Ctrl+Down moves the selected file, Delete removes it.
+        QQuickItem *editor = root->property("editor").value<QQuickItem *>();
+        editor->forceActiveFocus();
+        editor->setProperty("selection", 0);
+        QTest::keyClick(&window, Qt::Key_Down, Qt::ControlModifier);
+        QCOMPARE(order(), QString("cbad"));
+        QCOMPARE(editor->property("selection").toInt(), 1);
+        QTest::keyClick(&window, Qt::Key_Delete);
+        QCOMPARE(order(), QString("cad"));
+        // Enter plays from the selected file.
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(root->property("played").toStringList(), QStringList{"/m/a.mkv"});
+    }
+
+    // The editor page as HomeView uses it: the id comes from outside and
+    // follows moved(). Regressions from review: the page sticking to its
+    // first playlist, focus stuck in the name, a grip click converting a
+    // folder playlist, a lost rename, and the selection after a removal.
+    void playlistEditorFollowsItsPlaylist()
+    {
+        QTemporaryDir data, cache, theme, media;
+        for (const char *name : {"e1.mkv", "e2.mkv", "e3.mkv"})
+            touch(media.filePath(name));
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QVariantMap folder = library.expand({media.path()});
+        const QString show = playlists.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        const QString other = playlists.save("Other", {"/o/x.mkv", "/o/y.mkv", "/o/z.mkv"});
+        Theme colors(theme.path());
+        QObject picker;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &colors);
+        engine.rootContext()->setContextProperty("library", &library);
+        engine.rootContext()->setContextProperty("playlists", &playlists);
+        engine.rootContext()->setContextProperty("picker", &picker);
+        QQmlComponent component(&engine);
+        component.setData(QString("import QtQuick\n"
+                                  "Item {\n"
+                                  "    width: 900; height: 600\n"
+                                  "    property string current: \"%1\"\n"
+                                  "    property alias editor: editor\n"
+                                  "    QtObject { id: app\n"
+                                  "        function showError(text) {}\n"
+                                  "        function toast(icon, text) {}\n"
+                                  "        function openPlaylist(id, path) {} }\n"
+                                  "    PlaylistEditor { id: editor; anchors.fill: parent; app: app; playlistId: current\n"
+                                  "        onMoved: (id) => current = id }\n"
+                                  "}\n").arg(show).toUtf8(),
+                          QUrl("qrc:/editor-test2.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        QQuickWindow window;
+        window.resize(900, 600);
+        qobject_cast<QQuickItem *>(root.get())->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QQuickItem *editor = root->property("editor").value<QQuickItem *>();
+        std::function<QQuickItem *(QQuickItem *, const QString &)> find = [&](QQuickItem *item, const QString &name) {
+            if (item->objectName() == name)
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = find(child, name))
+                    return found;
+            return static_cast<QQuickItem *>(nullptr);
+        };
+
+        std::function<QQuickItem *(QQuickItem *)> input = [&](QQuickItem *item) -> QQuickItem * {
+            if (QByteArray(item->metaObject()->className()).startsWith("QQuickTextInput"))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = input(child))
+                    return found;
+            return nullptr;
+        };
+        QCOMPARE(input(editor)->property("text").toString(), folder.value("collection").toMap().value("name").toString());
+
+        // A click on a grip, with no drag, leaves the folder playlist alone.
+        QQuickItem *grip = nullptr;
+        QTRY_VERIFY((grip = find(window.contentItem(), "grip0")));
+        QTest::mouseClick(&window, Qt::LeftButton, {}, grip->mapToScene(QPointF(14, 27)).toPoint());
+        QCOMPARE(root->property("current").toString(), show);
+        QCOMPARE(playlists.find(show).value("kind").toString(), QString("folder"));
+
+        // Rename, Enter, then the keys work on the list again.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("My show"))
+            QTest::keyClick(&window, c);
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(playlists.find(show).value("name").toString(), QString("My show"));
+        editor->setProperty("selection", 2);
+        QTest::keyClick(&window, Qt::Key_Delete);
+        // The edit made it a list of its own; the page followed the new id.
+        const QString own = root->property("current").toString();
+        QVERIFY(own != show && own.startsWith("saved:"));
+        QCOMPARE(editor->property("playlistId").toString(), own);
+        QCOMPARE(playlists.find(own).value("count").toInt(), 2);
+
+        // Removing a file above the selection keeps the selection on its file.
+        editor->setProperty("selection", 1);
+        QMetaObject::invokeMethod(editor, "removeRow", Q_ARG(QVariant, 0));
+        QCOMPARE(editor->property("selection").toInt(), 0);
+
+        // A name being typed survives a change saved meanwhile, and Back
+        // keeps it.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("Typed"))
+            QTest::keyClick(&window, c);
+        playlists.refresh();
+        QQuickItem *back = find(window.contentItem(), "back");
+        QTest::mouseClick(&window, Qt::LeftButton, {}, back->mapToScene(QPointF(back->width() / 2, back->height() / 2)).toPoint());
+        QCOMPARE(playlists.find(own).value("name").toString(), QString("Typed"));
+
+        // A typed name is kept when another playlist opens, and the page
+        // then shows that one.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("Kept"))
+            QTest::keyClick(&window, c);
+        QMetaObject::invokeMethod(editor, "saveName");
+        root->setProperty("current", other);
+        QCOMPARE(playlists.find(own).value("name").toString(), QString("Kept"));
+        QCOMPARE(editor->property("info").toMap().value("name").toString(), QString("Other"));
+        QTRY_VERIFY(find(window.contentItem(), "grip2"));
+    }
+
+    void editingAFolderPlaylistMakesItsOwnList()
+    {
+        QTemporaryDir data, cache, media;
+        touch(media.filePath("e1.mkv"));
+        touch(media.filePath("e2.mkv"));
+        Library library(data.path(), cache.path());
+        Playlists playlists(&library, data.path());
+        const QVariantMap folder = library.expand({media.path()});
+        const QString id = playlists.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        playlists.rename(id, "My show");
+        QCOMPARE(playlists.find(id).value("name").toString(), QString("My show"));
+        // Reordered: no longer follows the folder, under a new id.
+        const QString own = playlists.setFiles(id, {media.filePath("e2.mkv"), media.filePath("e1.mkv")});
+        QVERIFY(!own.isEmpty() && own != id);
+        QCOMPARE(playlists.find(own).value("kind").toString(), QString("saved"));
+        QVERIFY(playlists.find(id).isEmpty());
+        touch(media.filePath("e3.mkv"));
+        QCOMPARE(playlists.open(own).value("files").toStringList().size(), 2);
+        // Opening the folder again makes a fresh folder playlist beside it.
+        const QVariantMap again = library.expand({media.path()});
+        playlists.remember(again.value("collection").toMap(), again.value("files").toStringList());
+        QCOMPARE(playlists.all().size(), 2);
+        // Playing from a chosen file, and an empty new playlist.
+        QCOMPARE(playlists.open(own, media.filePath("e1.mkv")).value("index").toInt(), 1);
+        const QString empty = playlists.save("Later");
+        QVERIFY(!empty.isEmpty());
+        QVERIFY(playlists.open(empty).value("files").toStringList().isEmpty());
+        QCOMPARE(library.collect({media.filePath("e1.mkv")}), QStringList{media.filePath("e1.mkv")});
+    }
+
     void linksPassThrough()
     {
         const QString link = "https://example.com/watch?v=abc";
@@ -291,6 +673,15 @@ private slots:
         QVERIFY(QFileInfo(percent).size() > 0);
         QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
 
+        // A quick grab (library cards) is scaled down to at most 640 wide.
+        const QString wide = dir.filePath("wide.mkv"), card = dir.filePath("card.jpg");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i",
+                                            "testsrc2=size=1280x720:rate=10", "-t", "3", wide}), 0);
+        result = -1;
+        grabFrameWithFfmpeg(&owner, wide, 1.5, card, [&](bool ok) { result = ok; }, ffmpeg, true);
+        QTRY_COMPARE_WITH_TIMEOUT(result, 1, 10000);
+        QCOMPARE(QImage(card).width(), 640);
+
         result = -1;
         grabFrameWithFfmpeg(&owner, dir.filePath("missing.mkv"), 1, frame, [&](bool ok) { result = ok; });
         QCOMPARE(result, 0);
@@ -299,6 +690,45 @@ private slots:
                             [&](bool ok) { result = ok; });
         QTRY_COMPARE_WITH_TIMEOUT(result, 0, 10000);
         QCOMPARE(QDir(dir.path()).entryList({"*.part.jpg"}).size(), 0);
+    }
+
+    void previewsCoverTheWholeFile()
+    {
+        const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+        if (ffmpeg.isEmpty())
+            QSKIP("ffmpeg isn't installed");
+        // B-frames and a single keyframe: the cheap keyframe-only grab comes
+        // back empty here, so every preview takes the retry.
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("clip.mkv");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=10",
+                                            "-t", "12", "-c:v", "libx264", "-bf", "3", clip}), 0);
+        Thumbnailer thumbnailer(dir.filePath("frames"), ffmpeg);
+        thumbnailer.prepare(clip, 12);
+        const int count = Thumbnailer::frameCount(12);
+        auto all = [&] {
+            for (int i = 0; i < count; ++i)
+                if (!thumbnailer.frameAt((i + .5) / count).endsWith(QString("/%1.jpg").arg(i)))
+                    return false;
+            return true;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(all(), 30000);
+
+        // Grabs called off midway (another file opened) leave no partial
+        // frames behind once their ffmpeg exits.
+        const QString longer = dir.filePath("longer.mkv");
+        QCOMPARE(QProcess::execute(ffmpeg, {"-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=10",
+                                            "-t", "60", longer}), 0);
+        thumbnailer.prepare(longer, 60);
+        QTest::qWait(50);
+        thumbnailer.prepare("", 0);
+        auto partials = [&] {
+            int n = 0;
+            QDirIterator it(dir.filePath("frames"), {"*.part.jpg"}, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) { it.next(); ++n; }
+            return n;
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(partials(), 0, 10000);
     }
 
     void themeFallsBack()

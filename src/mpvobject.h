@@ -125,6 +125,7 @@ private:
         QString file;
         QString source;
         double position = 0;
+        bool quick = false; // A library card, not a saved frame.
     };
     QHash<quint64, Screenshot> m_screenshots;
     quint64 m_nextReply = 1;

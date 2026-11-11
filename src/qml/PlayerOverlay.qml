@@ -713,6 +713,7 @@ Item {
         Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
         onPicked: (index) => overlay.app.playAt(index)
         onCloseRequested: overlay.playlistOpen = false
+        onSaveRequested: overlay.app.savePlaylist()
     }
 
     Sheet {

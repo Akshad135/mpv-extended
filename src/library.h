@@ -41,9 +41,15 @@ public:
     Q_INVOKABLE void refresh();
 
     // The playlist an open request becomes: a folder plays everything in it,
-    // and a single file plays with its siblings of the same kind so the next
-    // episode is ready. Returns {files, index}.
+    // a playlist file (.m3u, .m3u8, .pls) plays what it lists, and a single
+    // file plays with its siblings of the same kind so the next episode is
+    // ready. Returns {files, index}, plus {collection: {kind, source, name}}
+    // when one folder or one playlist file was opened: those are kept as
+    // playlists in the library.
     Q_INVOKABLE QVariantMap expand(const QStringList &inputs) const;
+    // Files to add to a playlist: folders and playlist files are opened up,
+    // and anything else is taken as it is (one file stays one file).
+    Q_INVOKABLE QStringList collect(const QStringList &inputs) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE QString frameCaptureFile(const QString &title, double position) const;
     // Where captures go; ~/Pictures/mpv-extended unless set (tests set it).
@@ -54,7 +60,15 @@ public:
 
     static QString format(double seconds);
     static bool isFinished(double position, double duration);
+    // A finished-or-not record of one file, for playlists. False if unplayed.
+    bool lookup(const QString &path, Entry *entry) const;
+    // The library-card frame of a file, as a URL, or empty.
+    QString thumbnailUrl(const QString &path) const;
+
     static QString kindOf(const QString &path); // "video", "audio", or ""
+    static bool isPlaylistFile(const QString &path);
+    // The entries of an .m3u, .m3u8, or .pls file, relative paths resolved.
+    static QStringList readPlaylistFile(const QString &path);
     static QStringList mediaIn(const QString &directory);
     static void naturalSort(QStringList &paths);
 

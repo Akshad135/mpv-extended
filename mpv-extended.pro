@@ -19,6 +19,7 @@ HEADERS += \
     src/inhibitor.h \
     src/library.h \
     src/mpvobject.h \
+    src/playlists.h \
     src/theme.h \
     src/thumbnailer.h \
     src/translator.h
@@ -31,6 +32,7 @@ SOURCES += \
     src/inhibitor.cpp \
     src/library.cpp \
     src/mpvobject.cpp \
+    src/playlists.cpp \
     src/theme.cpp \
     src/thumbnailer.cpp \
     src/translator.cpp

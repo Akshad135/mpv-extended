@@ -30,10 +30,12 @@ ApplicationWindow {
     readonly property bool dropActive: drop.containsDrag
     property bool helpVisible: false
     // Player keys rest while the shortcut sheet is up.
-    readonly property bool playerKeys: inPlayer && !helpVisible
+    // With a playlist open in the library, opening adds to it instead.
+    readonly property bool editingPlaylist: !inPlayer && home.editingId !== ""
+    readonly property bool playerKeys: inPlayer && !helpVisible && !saveDialog.opened
     // Also when mpv stops by itself (a link that fails, a stream that ends):
     // the menus are popups above everything and would float over the library.
-    onInPlayerChanged: if (!inPlayer) { overlay.closeMenus(); library.refresh() }
+    onInPlayerChanged: if (!inPlayer) { overlay.closeMenus(); library.refresh(); playlists.refresh() }
 
     // Fills %1, %2, ... in one pass, so a file name that contains "%2"
     // stays as it is (chained .arg() would substitute into it).
@@ -51,6 +53,34 @@ ApplicationWindow {
             showError(qsTr("Nothing playable there."))
             return
         }
+        // A folder or a playlist file is kept in the library, and picks up
+        // where it was left.
+        if (result.collection) {
+            playlists.remember(result.collection, result.files)
+            result.index = playlists.startAt(result.files)
+        }
+        play(result)
+    }
+    function openPlaylist(id, startAt, near) {
+        const result = playlists.open(id, startAt || "", near === undefined ? -1 : near)
+        if (result.files.length === 0) {
+            const info = playlists.find(id)
+            showError(info.available && info.count === 0 ? qsTr("That playlist is empty. Add files to it first.")
+                                                         : qsTr("That playlist's folder or file is gone."))
+            return
+        }
+        play(result)
+    }
+    function savePlaylist() {
+        const files = mpv.playlist.map(entry => String(entry.filename || "")).filter(f => f)
+        if (files.length === 0) return
+        overlay.closeMenus()
+        // Named after the folder the queue came from, which is usually right.
+        const first = files[0]
+        const folder = first.includes("://") ? "" : first.split("/").slice(-2, -1)[0] || ""
+        saveDialog.ask(files, folder)
+    }
+    function play(result) {
         helpVisible = false
         // Whatever was playing keeps its place, and a switch or a trip to the
         // library that was still waiting for its frame is called off.
@@ -178,7 +208,9 @@ ApplicationWindow {
     }
 
     function handleEscape() {
-        if (helpVisible) helpVisible = false
+        if (saveDialog.opened) saveDialog.close()
+        else if (helpVisible) helpVisible = false
+        else if (!inPlayer && home.editingId) home.escapeEditor()
         else if (overlay.closeMenus()) {}
         else if (fullscreen) win.showNormal()
         else if (inPlayer) goHome()
@@ -192,7 +224,7 @@ ApplicationWindow {
 
     // Closing only records the position; the library card keeps the frame
     // saved on the last pause or within the last 20 seconds.
-    onClosing: { saveProgress(false); library.save() }
+    onClosing: { saveProgress(false); home.saveEditor(); library.save() }
 
     Component.onCompleted: {
         mpv.set("background-color", theme.deep)
@@ -235,6 +267,8 @@ ApplicationWindow {
                     win.toast("subtitles", qsTr("Subtitles loaded"))
                 else
                     win.showError(qsTr("Couldn't load those subtitles."))
+            } else if (purpose === "playlist") {
+                home.addToEditor(urls)
             } else {
                 win.openInputs(urls)
             }
@@ -288,7 +322,10 @@ ApplicationWindow {
         keys: ["text/uri-list"]
         onDropped: (event) => {
             if (event.hasUrls) {
-                win.openInputs(event.urls.map(u => u.toString()))
+                const urls = event.urls.map(u => u.toString())
+                // Onto an open playlist: added to it, not played.
+                if (!win.inPlayer && home.editingId) home.addToEditor(urls)
+                else win.openInputs(urls)
                 event.acceptProposedAction()
             }
         }
@@ -307,7 +344,67 @@ ApplicationWindow {
             anchors.centerIn: parent
             spacing: 12
             Glyph { anchors.horizontalCenter: parent.horizontalCenter; width: 44; height: 44; name: "plus"; color: theme.accent }
-            Text { text: qsTr("Drop to play"); color: theme.strong; font.pixelSize: 18; font.weight: Font.DemiBold }
+            Text {
+                text: !win.inPlayer && home.editingId ? qsTr("Drop to add to the playlist") : qsTr("Drop to play")
+                color: theme.strong
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
+        }
+    }
+
+    // Names a queue being kept as a playlist.
+    Popup {
+        id: saveDialog
+        property var files: []
+        function ask(list, name) {
+            files = list
+            nameField.text = name
+            open()
+        }
+        function accept() {
+            if (playlists.save(nameField.text, files)) win.toast("playlist", qsTr("Saved to the library"))
+            else win.showError(qsTr("Couldn't save the playlist."))
+            close()
+        }
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 420)
+        modal: true
+        padding: 20
+        // Esc goes through the app's shortcut, which closes this first.
+        closePolicy: Popup.CloseOnPressOutside
+        onOpened: { nameField.selectAll(); nameField.forceActiveFocus() }
+        Overlay.modal: Rectangle { color: theme.alpha(theme.deep, 0.6) }
+        background: Rectangle {
+            radius: theme.radius
+            color: theme.background
+            border.color: theme.alpha(theme.foreground, 0.12)
+        }
+        contentItem: Column {
+            spacing: 14
+            Text {
+                text: qsTr("Save the queue as a playlist")
+                color: theme.strong
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+            }
+            Text {
+                text: qsTr("%n files. It shows up in the library.", "", saveDialog.files.length)
+                color: theme.dim
+                font.pixelSize: 12
+            }
+            TextField {
+                id: nameField
+                width: parent.width
+                placeholderText: qsTr("Name")
+                onAccepted: saveDialog.accept()
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+                PillButton { icon: "close"; text: qsTr("Cancel"); onClicked: saveDialog.close() }
+                PillButton { icon: "plus"; text: qsTr("Save"); primary: true; onClicked: saveDialog.accept() }
+            }
         }
     }
 
@@ -324,15 +421,16 @@ ApplicationWindow {
     }
 
     // Shortcuts. The player's are off in the library, where arrows move the
-    // selection instead.
-    Shortcut { sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.close() }
+    // selection instead. All but Esc rest while a playlist is being named.
+    Shortcut { enabled: !saveDialog.opened; sequences: ["?", "Shift+?"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { enabled: !saveDialog.opened; sequence: "Q"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.close() }
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.handleEscape() }
-    Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
-    Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
-    Shortcut { sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles() }
-    Shortcut { sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder() }
-    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
+    Shortcut { enabled: !saveDialog.opened; sequence: "F"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { enabled: !saveDialog.opened; sequence: "F11"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.toggleFullscreen() }
+    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFiles(win.editingPlaylist ? "playlist" : "media") }
+    Shortcut { enabled: !saveDialog.opened; sequence: "Ctrl+Shift+O"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: picker.openFolder(win.editingPlaylist ? "playlist" : "media") }
+    Shortcut { enabled: !saveDialog.opened && !win.inPlayer; sequence: "Ctrl+N"; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: home.newPlaylist() }
+    Shortcut { enabled: !saveDialog.opened; sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: win.openClipboard() }
 
     Shortcut { enabled: win.playerKeys; sequences: ["Space", "K"]; context: Qt.ApplicationShortcut; autoRepeat: false; onActivated: overlay.togglePause() }
     Shortcut { enabled: win.playerKeys; sequence: "Left"; context: Qt.ApplicationShortcut; autoRepeat: true; onActivated: overlay.seekBy(-5) }

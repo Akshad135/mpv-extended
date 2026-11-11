@@ -42,5 +42,6 @@ private:
     int m_revision = 0;
     QList<int> m_queue;
     QSet<int> m_done;
+    QSet<int> m_slow; // Frames whose keyframe-only grab came back empty.
     QList<QProcess *> m_running;
 };

@@ -63,12 +63,13 @@ FilePicker::FilePicker(QObject *parent) : QObject(parent) {
     qDBusRegisterMetaType<QList<Filter>>();
 }
 
-void FilePicker::openFiles() {
-    request(tr("Open Media"), "media", false, true, MediaFilters);
+void FilePicker::openFiles(const QString &purpose) {
+    request(purpose == "playlist" ? tr("Add to Playlist") : tr("Open Media"), purpose, false, true, MediaFilters);
 }
 
-void FilePicker::openFolder() {
-    request(tr("Open Folder"), "media", true, false, NoFilters);
+void FilePicker::openFolder(const QString &purpose) {
+    request(purpose == "playlist" ? tr("Add a Folder to the Playlist") : tr("Open Folder"), purpose, true, false,
+            NoFilters);
 }
 
 void FilePicker::openSubtitle() {
@@ -104,7 +105,8 @@ void FilePicker::request(const QString &title, const QString &purpose, bool dire
     QVariantMap options{{"handle_token", token}, {"modal", true}, {"multiple", multiple}, {"directory", directory}};
     if (filters == MediaFilters) {
         const QList<Filter> list{
-            {tr("Video and audio"), {{1, "video/*"}, {1, "audio/*"}}},
+            {tr("Video, audio, and playlists"),
+             {{1, "video/*"}, {1, "audio/*"}, {0, "*.m3u"}, {0, "*.m3u8"}, {0, "*.pls"}}},
             {tr("All files"), {{0, "*"}}},
         };
         options.insert("filters", QVariant::fromValue(list));

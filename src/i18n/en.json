@@ -2,5 +2,7 @@
   "%n items": { "one": "%n item", "other": "%n items" },
   "%n min ago": { "one": "%n min ago", "other": "%n min ago" },
   "%n h ago": { "one": "%n h ago", "other": "%n h ago" },
-  "%n d ago": { "one": "%n day ago", "other": "%n days ago" }
+  "%n d ago": { "one": "%n day ago", "other": "%n days ago" },
+  "%n files": { "one": "%n file", "other": "%n files" },
+  "%n files. It shows up in the library.": { "one": "%n file. It shows up in the library.", "other": "%n files. It shows up in the library." }
 }
