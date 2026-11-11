@@ -22,6 +22,7 @@ FocusScope {
         editor.takeKeys()
     }
     function newPlaylist() {
+        saveEditor() // a name being typed is kept
         const id = playlists.save(qsTr("New playlist"))
         if (!id) { app.showError(qsTr("Couldn't save the playlist.")); return }
         editPlaylist(id)

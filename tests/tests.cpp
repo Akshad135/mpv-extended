@@ -502,6 +502,16 @@ private slots:
             return static_cast<QQuickItem *>(nullptr);
         };
 
+        std::function<QQuickItem *(QQuickItem *)> input = [&](QQuickItem *item) -> QQuickItem * {
+            if (QByteArray(item->metaObject()->className()).startsWith("QQuickTextInput"))
+                return item;
+            for (QQuickItem *child : item->childItems())
+                if (QQuickItem *found = input(child))
+                    return found;
+            return nullptr;
+        };
+        QCOMPARE(input(editor)->property("text").toString(), folder.value("collection").toMap().value("name").toString());
+
         // A click on a grip, with no drag, leaves the folder playlist alone.
         QQuickItem *grip = nullptr;
         QTRY_VERIFY((grip = find(window.contentItem(), "grip0")));
@@ -527,6 +537,16 @@ private slots:
         editor->setProperty("selection", 1);
         QMetaObject::invokeMethod(editor, "removeRow", Q_ARG(QVariant, 0));
         QCOMPARE(editor->property("selection").toInt(), 0);
+
+        // A name being typed survives a change saved meanwhile, and Back
+        // keeps it.
+        QMetaObject::invokeMethod(editor, "renameNow");
+        for (const char c : QByteArray("Typed"))
+            QTest::keyClick(&window, c);
+        playlists.refresh();
+        QQuickItem *back = find(window.contentItem(), "back");
+        QTest::mouseClick(&window, Qt::LeftButton, {}, back->mapToScene(QPointF(back->width() / 2, back->height() / 2)).toPoint());
+        QCOMPARE(playlists.find(own).value("name").toString(), QString("Typed"));
 
         // A typed name is kept when another playlist opens, and the page
         // then shows that one.

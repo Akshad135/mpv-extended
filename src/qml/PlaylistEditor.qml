@@ -92,12 +92,12 @@ FocusScope {
     function saveName() {
         const name = nameField.text.trim()
         if (playlistId && name && name !== info.name) playlists.rename(playlistId, name)
-        nameField.text = Qt.binding(() => editor.info.name || "")
+        nameField.text = editor.info.name || ""
     }
     // Esc leaves a rename unchanged first, and only then the page.
     function leave() {
         if (nameField.activeFocus) {
-            nameField.text = Qt.binding(() => editor.info.name || "")
+            nameField.text = editor.info.name || ""
             takeKeys()
         } else {
             saveName()
@@ -105,6 +105,10 @@ FocusScope {
         }
     }
     Item { id: keySink; focus: true }
+    // The field shows the stored name, except while it's being typed into:
+    // a change saved meanwhile (here or in another window) doesn't wipe it.
+    onInfoChanged: if (!nameField.activeFocus) nameField.text = info.name || ""
+    Component.onCompleted: nameField.text = info.name || ""
 
     onPlaylistIdChanged: if (paths().join("\n") !== playlists.entries(playlistId).map(e => e.path).join("\n")) reload()
     // Changes from another window, or a folder scanned again on opening.
@@ -142,7 +146,13 @@ FocusScope {
 
     Rectangle { anchors.fill: parent; color: theme.background }
     // Clicks between the controls stay on this page, not the library under it.
-    MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onClicked: editor.takeKeys(); onWheel: (wheel) => wheel.accepted = true }
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true // nor hovers: no stray cursor or tooltip from below
+        onClicked: editor.takeKeys()
+        onWheel: (wheel) => wheel.accepted = true
+    }
 
     // Header: back, the name (edited in place), and what can be done.
     Item {
@@ -158,7 +168,8 @@ FocusScope {
             y: 20
             icon: "back"
             tip: qsTr("Library (Esc)")
-            onClicked: editor.closed()
+            objectName: "back"
+            onClicked: { editor.saveName(); editor.closed() }
         }
         // The name, edited in place: looks like a title until clicked.
         Rectangle {
@@ -180,7 +191,6 @@ FocusScope {
                 anchors.rightMargin: 10
                 verticalAlignment: TextInput.AlignVCenter
                 clip: true
-                text: editor.info.name || ""
                 font.pixelSize: 20
                 font.weight: Font.Bold
                 color: theme.strong
