@@ -347,7 +347,7 @@ ApplicationWindow {
     Shortcut { enabled: win.playerKeys; sequence: "P"; context: Qt.ApplicationShortcut; onActivated: if (overlay.hasPlaylist) overlay.togglePlaylist() }
     Shortcut { enabled: win.playerKeys; sequence: "N"; context: Qt.ApplicationShortcut; onActivated: win.playNext() }
     Shortcut { enabled: win.playerKeys; sequence: "Shift+N"; context: Qt.ApplicationShortcut; onActivated: win.playPrevious() }
-    Shortcut { enabled: win.playerKeys; sequence: "Return"; context: Qt.ApplicationShortcut; onActivated: overlay.playUpNext() }
+    Shortcut { enabled: win.playerKeys; sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: overlay.playUpNext() }
     Shortcut { enabled: win.playerKeys; sequence: "PgUp"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", -1]) }
     Shortcut { enabled: win.playerKeys; sequence: "PgDown"; context: Qt.ApplicationShortcut; onActivated: mpv.command(["add", "chapter", 1]) }
     Shortcut { enabled: win.playerKeys; sequence: "Ctrl+S"; context: Qt.ApplicationShortcut; onActivated: win.captureFrame() }

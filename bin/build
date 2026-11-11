@@ -2,10 +2,14 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-mkdir -p "$ROOT/build"
-cd "$ROOT/build"
+# Dev builds (CONFIG+=dev) get their own directory: qmake doesn't rebuild
+# objects when only DEFINES change, so sharing one would mix the two.
+DIR="$ROOT/build"
+case " $* " in *" CONFIG+=dev "*) DIR="$ROOT/build-dev" ;; esac
+mkdir -p "$DIR"
+cd "$DIR"
 
 qmake6 "$ROOT/mpv-extended.pro" "$@"
 make -j"$(nproc)"
 
-echo "Built $ROOT/build/mpv-extended"
+echo "Built $DIR/mpv-extended"

@@ -6,7 +6,7 @@ pkgdesc='A video player for Omarchy, built on libmpv'
 arch=('x86_64' 'aarch64')
 url='https://github.com/akshad135/mpv-extended'
 license=('MIT')
-depends=('qt6-base' 'qt6-declarative' 'mpv' 'ffmpeg' 'wayland' 'xdg-desktop-portal' 'hicolor-icon-theme')
+depends=('qt6-base' 'qt6-declarative' 'mpv' 'ffmpeg' 'wayland' 'libglvnd' 'xdg-desktop-portal' 'hicolor-icon-theme')
 makedepends=('wayland-protocols')
 optdepends=('yt-dlp: play links from YouTube and other sites'
             'xdg-desktop-portal-gtk: file picker on Hyprland and other wlroots desktops')
@@ -29,6 +29,8 @@ check() {
   qmake6 ../tests/tests.pro
   make
   QT_QPA_PLATFORM=offscreen ./tests
+  # The version in mpv-extended.pro must match this package's.
+  [ "$(QT_QPA_PLATFORM=offscreen ../build/mpv-extended --version)" = "mpv-extended $pkgver" ]
 }
 
 package() {

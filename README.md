@@ -51,9 +51,12 @@ It is an independent project built on libmpv, not part of mpv.
 
 ## Install
 
-On Arch or Omarchy, from a clone of this repository:
+On Arch or Omarchy:
 
 ```sh
+sudo pacman -S --needed git base-devel
+git clone https://github.com/akshad135/mpv-extended
+cd mpv-extended
 bin/install          # builds the package and installs it with pacman (asks for sudo)
 ```
 

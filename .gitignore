@@ -1,4 +1,6 @@
 /build/
+/build-dev/
+*.pro.user
 /pkgbuild/pkg/
 /pkgbuild/src/
 *.pkg.tar.*
