@@ -23,6 +23,7 @@
 #include "filepicker.h"
 #include "inhibitor.h"
 #include "library.h"
+#include "playlists.h"
 #include "mpvobject.h"
 #include "theme.h"
 #include "thumbnailer.h"
@@ -73,6 +74,7 @@ int main(int argc, char *argv[]) {
 
     Theme theme;
     Library library;
+    Playlists playlists(&library);
     Thumbnailer thumbnailer;
     FilePicker picker;
     Inhibitor inhibitor;
@@ -93,6 +95,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("library", &library);
+    engine.rootContext()->setContextProperty("playlists", &playlists);
     engine.rootContext()->setContextProperty("thumbnailer", &thumbnailer);
     engine.rootContext()->setContextProperty("picker", &picker);
     engine.rootContext()->setContextProperty("inhibitor", &inhibitor);

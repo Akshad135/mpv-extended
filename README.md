@@ -13,6 +13,10 @@ It is an independent project built on libmpv, not part of mpv.
   resumes it; the library shows the frame where you stopped.
 - **Queues itself.** Open one episode and the rest of the folder is queued in
   natural order (2 before 10). At the end, an "Up next" card counts down.
+- **Playlists.** Open a folder, or an .m3u, .m3u8, or .pls file, and it stays
+  in the library as a playlist that picks up at the next unwatched file. A
+  folder is scanned again each time, so new episodes show up. Any queue can
+  be saved as a playlist from the queue panel.
 - **Timeline previews.** Hover the seek bar to see the frame, the time, and
   the chapter.
 - **Tracks.** Pick audio and subtitle tracks by language, or load a
@@ -44,7 +48,7 @@ It is an independent project built on libmpv, not part of mpv.
 | F, F11 | Fullscreen |
 | Ctrl+S | Save the frame to ~/Pictures/mpv-extended |
 | Ctrl+O / Ctrl+Shift+O / Ctrl+V | Open files / a folder / a copied link |
-| Arrows, Enter, Delete | In the library: pick, play, remove from history |
+| Arrows, Enter, Delete | In the library: pick, play, remove |
 | Esc | Close, leave fullscreen, or go to the library |
 | ? | All shortcuts |
 | Q | Quit |

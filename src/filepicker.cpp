@@ -104,7 +104,8 @@ void FilePicker::request(const QString &title, const QString &purpose, bool dire
     QVariantMap options{{"handle_token", token}, {"modal", true}, {"multiple", multiple}, {"directory", directory}};
     if (filters == MediaFilters) {
         const QList<Filter> list{
-            {tr("Video and audio"), {{1, "video/*"}, {1, "audio/*"}}},
+            {tr("Video, audio, and playlists"),
+             {{1, "video/*"}, {1, "audio/*"}, {0, "*.m3u"}, {0, "*.m3u8"}, {0, "*.pls"}}},
             {tr("All files"), {{0, "*"}}},
         };
         options.insert("filters", QVariant::fromValue(list));

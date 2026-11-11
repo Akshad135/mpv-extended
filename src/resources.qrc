@@ -10,6 +10,8 @@
         <file alias="PlaylistPanel.qml">qml/PlaylistPanel.qml</file>
         <file alias="HomeView.qml">qml/HomeView.qml</file>
         <file alias="MediaCard.qml">qml/MediaCard.qml</file>
+        <file alias="PlaylistCard.qml">qml/PlaylistCard.qml</file>
+        <file alias="PillButton.qml">qml/PillButton.qml</file>
         <file alias="RecentRow.qml">qml/RecentRow.qml</file>
         <file alias="HelpOverlay.qml">qml/HelpOverlay.qml</file>
         <file alias="Toast.qml">qml/Toast.qml</file>

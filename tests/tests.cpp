@@ -10,6 +10,7 @@
 
 #include "framegrab.h"
 #include "library.h"
+#include "playlists.h"
 #include "theme.h"
 #include "thumbnailer.h"
 #include "translator.h"
@@ -247,6 +248,99 @@ private slots:
         const QStringList files = Library().expand({QUrl::fromLocalFile(dir.path()).toString()})
                                       .value("files").toStringList();
         QCOMPARE(files.size(), 2);
+    }
+
+    void folderAndPlaylistFilesBecomePlaylists()
+    {
+        QTemporaryDir dir;
+        touch(dir.filePath("a.mkv"));
+        QVariantMap result = Library().expand({dir.path()});
+        QCOMPARE(result.value("collection").toMap().value("kind").toString(), QString("folder"));
+        // A single episode only queues its siblings; it's not a playlist.
+        QVERIFY(!Library().expand({dir.filePath("a.mkv")}).contains("collection"));
+
+        QFile m3u(dir.filePath("Watch list.m3u8"));
+        QVERIFY(m3u.open(QIODevice::WriteOnly));
+        m3u.write("\xEF\xBB\xBF#EXTM3U\n#EXTINF:10,First\nShow/one.mkv\n\n/abs/two.mkv\r\n"
+                  "file:///abs/three%20x.mkv\nhttps://example.com/live.m3u8\n");
+        m3u.close();
+        result = Library().expand({m3u.fileName()});
+        QCOMPARE(result.value("files").toStringList(),
+                 (QStringList{dir.filePath("Show/one.mkv"), "/abs/two.mkv", "/abs/three x.mkv",
+                              "https://example.com/live.m3u8"}));
+        const QVariantMap collection = result.value("collection").toMap();
+        QCOMPARE(collection.value("kind").toString(), QString("file"));
+        QCOMPARE(collection.value("name").toString(), QString("Watch list"));
+
+        QFile pls(dir.filePath("radio.pls"));
+        QVERIFY(pls.open(QIODevice::WriteOnly));
+        pls.write("[playlist]\nFile1=http://radio.example/stream\nTitle1=Radio\nfile2=b.mp3\nNumberOfEntries=2\n");
+        pls.close();
+        QCOMPARE(Library::readPlaylistFile(pls.fileName()),
+                 (QStringList{"http://radio.example/stream", dir.filePath("b.mp3")}));
+    }
+
+    void playlistsPickUpWhereTheyWereLeft()
+    {
+        QTemporaryDir data, cache;
+        Library library(data.path(), cache.path());
+        const QStringList files{"/s/e1.mkv", "/s/e2.mkv", "/s/e3.mkv"};
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+        library.update("/s/e1.mkv", "", 1500, 1500); // finished
+        QCOMPARE(Playlists::startIndex(files, &library), 1);
+        QTest::qSleep(3); // Plays a few milliseconds apart, as in life.
+        library.update("/s/e2.mkv", "", 300, 1500); // halfway
+        QCOMPARE(Playlists::startIndex(files, &library), 1);
+        QTest::qSleep(3);
+        library.update("/s/e3.mkv", "", 1500, 1500); // the end, so from the top
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+        QTest::qSleep(3);
+        library.update("/s/e1.mkv", "", 900, 1500); // rewatching the first
+        QCOMPARE(Playlists::startIndex(files, &library), 0);
+    }
+
+    void playlistsAreKeptAcrossWindows()
+    {
+        QTemporaryDir data, cache, media;
+        touch(media.filePath("e1.mkv"));
+        touch(media.filePath("e2.mkv"));
+        Library library(data.path(), cache.path());
+        Playlists first(&library, data.path()), second(&library, data.path());
+
+        const QVariantMap folder = library.expand({media.path()});
+        const QString id = first.remember(folder.value("collection").toMap(), folder.value("files").toStringList());
+        // Opening the same folder again keeps one playlist.
+        QCOMPARE(first.remember(folder.value("collection").toMap(), folder.value("files").toStringList()), id);
+        // The other window hasn't read it yet, and saves its own: both stay.
+        QTest::qSleep(3);
+        const QString saved = second.save("  Friday   night ", {"/x/a.mkv", "/x/b.mkv"});
+        QCOMPARE(second.all().size(), 2);
+        first.refresh();
+        QCOMPARE(first.all().size(), 2);
+        const QVariantMap mine = first.all().first().toMap();
+        QCOMPARE(mine.value("name").toString(), QString("Friday night"));
+        QCOMPARE(mine.value("kind").toString(), QString("saved"));
+        QCOMPARE(mine.value("count").toInt(), 2);
+
+        // A folder is scanned again when opened: new episodes show up.
+        touch(media.filePath("e3.mkv"));
+        library.update(media.filePath("e1.mkv"), "", 1500, 1500);
+        QTest::qSleep(3);
+        const QVariantMap opened = first.open(id);
+        QCOMPARE(opened.value("files").toStringList().size(), 3);
+        QCOMPARE(opened.value("index").toInt(), 1);
+        const QVariantMap card = first.all().first().toMap(); // opened last, so first
+        QCOMPARE(card.value("id").toString(), id);
+        QCOMPARE(card.value("watched").toInt(), 1);
+        QCOMPARE(card.value("nextTitle").toString(), QString("e2"));
+
+        second.forget(saved);
+        first.refresh();
+        QCOMPARE(first.all().size(), 1);
+        // A folder that's gone opens nothing.
+        QVERIFY(QDir(media.path()).removeRecursively());
+        QVERIFY(first.open(id).value("files").toStringList().isEmpty());
+        QVERIFY(!first.all().first().toMap().value("available").toBool());
     }
 
     void linksPassThrough()

@@ -45,7 +45,7 @@ Rectangle {
             ["Ctrl+Shift+O", qsTr("Open a folder")],
             ["Ctrl+V", qsTr("Open a copied link or path")],
             ["Arrows  Enter", qsTr("Pick and play")],
-            ["Delete", qsTr("Remove from history")],
+            ["Delete", qsTr("Remove from the library")],
             ["?", qsTr("Show these shortcuts")],
             ["Q", qsTr("Quit")],
         ]},

@@ -9,6 +9,7 @@ Rectangle {
     property bool open: false
     signal picked(int index)
     signal closeRequested()
+    signal saveRequested()
 
     radius: theme.radius
     color: theme.alpha(theme.background, 0.95)
@@ -37,12 +38,21 @@ Rectangle {
             }
         }
         IconButton {
+            id: closeButton
             anchors.right: parent.right
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             icon: "close"
             size: 32
             onClicked: panel.closeRequested()
+        }
+        IconButton {
+            anchors.right: closeButton.left
+            anchors.verticalCenter: parent.verticalCenter
+            icon: "plus"
+            size: 32
+            tip: qsTr("Save as a playlist")
+            onClicked: panel.saveRequested()
         }
     }
 
